@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "main",
+  "description": "Only the bundled main window may use the assistant commands.",
+  "windows": ["main"],
+  "permissions": ["assistant"]
+}
