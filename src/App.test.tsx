@@ -1,6 +1,18 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App';
+import { voiceApi } from './infrastructure/tauri/voice-api';
+vi.mock('./infrastructure/tauri/voice-api', () => ({
+  voiceApi: {
+    status: vi.fn(),
+    download: vi.fn(),
+    start: vi.fn(),
+    finish: vi.fn(),
+    cancel: vi.fn(),
+    speak: vi.fn(),
+    stop: vi.fn(),
+  },
+}));
 import { api } from './infrastructure/tauri/assistant-api';
 import { preferredModel } from './domain/preferred-model';
 import type { Message } from './domain/models';
@@ -39,6 +51,15 @@ const boot = {
 };
 beforeEach(() => {
   vi.resetAllMocks();
+  vi.mocked(voiceApi.status).mockResolvedValue({
+    stage: 'idle',
+    model: { ready: false, bytes: 147951465 },
+    downloaded_bytes: 0,
+    recording: { active: false, seconds: 0 },
+    speaking: false,
+  });
+  vi.mocked(voiceApi.cancel).mockResolvedValue(undefined);
+  vi.mocked(voiceApi.stop).mockResolvedValue(undefined);
   vi.mocked(api.bootstrap).mockResolvedValue(boot);
   vi.mocked(api.search).mockResolvedValue([]);
   vi.mocked(api.models).mockResolvedValue([{ id: 'qwen/qwen3.5-9b' }]);

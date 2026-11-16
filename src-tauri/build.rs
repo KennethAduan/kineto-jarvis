@@ -10,6 +10,13 @@ fn main() {
             "cancel_generation",
             "get_activity",
             "search_conversations",
+            "voice_status",
+            "voice_download_model",
+            "voice_start_recording",
+            "voice_finish_recording",
+            "voice_cancel",
+            "voice_speak_message",
+            "voice_stop_speaking",
         ]),
     ))
     .expect("Tauri build failed");

@@ -6,6 +6,8 @@ A local-first Tauri 2 desktop assistant. React + Vite + TypeScript, shadcn/ui, T
 
 Requirements: Node 22.12+ (Node 24 recommended), pnpm 11, stable Rust, and the [Tauri desktop prerequisites](https://v2.tauri.app/start/prerequisites/). Windows needs MSVC C++ Build Tools, the Windows SDK and WebView2. macOS needs Xcode Command Line Tools and a native Mac build.
 
+Voice compilation also needs CMake and LLVM's `libclang` shared library for Whisper's build-time bindings. Put CMake on PATH (or set `CMAKE` to its executable), and set `LIBCLANG_PATH` to the folder containing `libclang.dll` / `libclang.dylib`. CI obtains that build library through the pinned `libclang` package; Python is only a development setup option and is never an app runtime or sidecar.
+
 ```sh
 pnpm install --frozen-lockfile
 pnpm desktop
@@ -22,6 +24,14 @@ In LM Studio, load Qwen3.5-9B and start the local server at `http://127.0.0.1:12
 
 `pnpm dev` provides a browser UI preview with native operations disabled. It does not save chats in browser storage or contact the inference server.
 
+## Voice
+
+Open **Voice settings** beside the composer microphone and choose **Download speech model**. This explicit, one-time download fetches the fixed multilingual Whisper Base model (147,951,465 bytes, about 148 MB) from Hugging Face, verifies SHA-256, and stores it under application data / `voice/ggml-base.bin`. Interrupted or invalid downloads are discarded. Speech-model setup is the only new internet request; it never includes conversation text or audio.
+
+Click the microphone to record, then **Finish** to transcribe locally on the CPU. The transcript is appended to your existing draft for review; it is never sent automatically. Recording closes after 30 seconds, including when the WebView is suspended. Cancel or switching conversations discards the recording/transcript. Audio stays in memory and is not written to SQLite or audio files. Very quiet or shorter-than-half-second recordings are rejected.
+
+Use **Read reply aloud** below a completed assistant reply for manual playback with the installed system voice; **Stop speaking** interrupts it. Code blocks are omitted and playback is capped at 8,000 characters. No wake word, always-on microphone, automatic speech or cloud speech service is enabled. Windows/macOS microphone privacy settings must permit the app; macOS bundles include the microphone usage description and audio-input entitlement.
+
 ## Verify and build
 
 ```sh
@@ -34,6 +44,8 @@ pnpm tauri build --no-bundle
 ```
 
 For browser layout and Orb rendering regressions, run `pnpm exec playwright install chromium`, then `pnpm test:e2e`. These use an isolated mock adapter on port 1421 and do not read or modify real conversation history.
+
+An opt-in offline recognition test uses the public [Whisper JFK sample](https://github.com/ggml-org/whisper.cpp/blob/master/samples/jfk.wav). Set `WHISPER_TEST_MODEL` to the verified Base model and `WHISPER_TEST_WAV` to that 16 kHz mono WAV, then run `cargo test --manifest-path src-tauri/Cargo.toml recognizes_public_sample_offline -- --ignored`. The separate opt-in `downloads_and_verifies_public_model` test downloads 148 MB into a temporary directory and checks the real downloader. Normal tests never download models, capture your microphone or play audio.
 
 `pnpm tauri build` also creates native installers. macOS packaging/signing needs a Mac and appropriate signing credentials. CI checks Windows and macOS; a workflow being present does not mean those remote checks have run.
 
@@ -56,6 +68,8 @@ For browser layout and Orb rendering regressions, run `pnpm exec playwright inst
 React UI → allowlisted Tauri commands → Rust
                                       ├─ reqwest → 127.0.0.1:1234/v1
                                       ├─ SQLite → application data / jarvis.db
+                                      ├─ CPAL → bounded in-memory microphone capture → Whisper
+                                      ├─ System speech → manual reply playback
                                       └─ NativePlatform → Windows / macOS (tools disabled)
 ```
 
@@ -63,12 +77,12 @@ The frontend has no shell, filesystem, HTTP or external-link plugins. Explicit a
 
 Only a single app instance can run. SQLite writes are transactional; identifiers are generated in Rust and database queries are parameterized. User prompts are limited to 16,000 characters; inference uses the newest 40 completed messages up to 48,000 characters, plus the system prompt. This character bound is not a model-specific token budget: reduce long prompts if your configured context is smaller. Requests have connection/idle timeouts, a 15-minute total generation limit, a 4,096-token generation limit and a 2 MiB response limit.
 
-The current permission screen is read-only scaffolding. It intentionally cannot enable future desktop, file, shell, web, voice or MCP capabilities. Implement scoped action proposals, native authorization, audit records and per-platform adapters before registering such tools. Model-generated text must never count as user approval.
+The permission screen describes current boundaries and cannot enable future desktop, file, shell, web or MCP tools. Voice recording, speech-model setup and playback are separate, user-invoked IPC operations; they are never model tools. Implement scoped action proposals, native authorization, audit records and per-platform adapters before registering agent tools. Model-generated text must never count as user approval.
 
 ## Local data and limitations
 
 The SQLite file is `jarvis.db` in Tauri's application data directory for `com.kineto.jarvis` (normally `%APPDATA%/com.kineto.jarvis` on Windows and `~/Library/Application Support/com.kineto.jarvis` on macOS). It is **not encrypted**. OS account permissions and disk encryption protect it. A local process can impersonate LM Studio on the fixed port; this MVP assumes the user's OS account and local inference service are trusted. Deletion removes rows and associated task history, not a forensic secure erase of SQLite/WAL/disk blocks.
 
-No voice, web search, MCP, file access or computer control is implemented. No model download management, authentication token storage, attachments, token-aware context management, secure erase or signed installers are included. Windows is the development target. Windows and macOS CI checks passed for the initial MVP; macOS runtime behavior still requires verification on a Mac.
+No web search, MCP, file access or computer control is implemented. No inference-model download management, authentication token storage, attachments, token-aware context management, secure erase or signed installers are included. Voice uses the default microphone and installed system voice; device/voice selection, voice activity detection, GPU transcription and real-time dictation are not included. Windows is the development target. Windows and macOS CI checks passed for the initial MVP; macOS runtime behavior still requires verification on a Mac.
 
 API references: [Tauri channels](https://v2.tauri.app/develop/calling-frontend/), [Tauri capabilities](https://v2.tauri.app/security/capabilities/), [LM Studio chat completions](https://lmstudio.ai/docs/developer/openai-compat/chat-completions).

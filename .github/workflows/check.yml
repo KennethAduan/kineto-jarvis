@@ -17,6 +17,14 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      # Build-time libclang for Whisper's bindgen; Python is never bundled with the app.
+      - run: python -m pip install libclang==18.1.1
+      - name: Locate libclang
+        shell: bash
+        run: python -c "import clang.cindex, os; open(os.environ['GITHUB_ENV'], 'a').write('LIBCLANG_PATH=' + clang.cindex.Config.library_path + '\n')"
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri

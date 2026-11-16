@@ -9,6 +9,8 @@ use crate::{
 };
 use serde::Serialize;
 use tauri::{ipc::Channel, State};
+mod voice;
+pub(crate) use voice::*;
 #[derive(Serialize)]
 pub(crate) struct Bootstrap {
     conversations: Vec<Conversation>,
@@ -95,4 +97,5 @@ pub(crate) struct DesktopState {
     pub assistant: AssistantService,
     pub platform: PlatformInfo,
     pub endpoint: &'static str,
+    pub voice: std::sync::Arc<crate::application::voice::VoiceService>,
 }

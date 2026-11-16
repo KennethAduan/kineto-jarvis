@@ -35,6 +35,9 @@ impl Drop for ActiveGuard<'_> {
 }
 
 impl AssistantService {
+    pub fn is_generating(&self) -> Result<bool, String> {
+        Ok(locked(&self.active)?.is_some())
+    }
     pub fn new(
         repository: Box<dyn ConversationRepository>,
         gateway: Box<dyn ModelGateway>,

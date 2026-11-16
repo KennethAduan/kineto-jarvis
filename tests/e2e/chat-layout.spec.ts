@@ -27,6 +27,21 @@ async function fixture(page: Page, answer?: string) {
     `,
     }),
   );
+  await page.route('**/src/infrastructure/tauri/voice-api.ts*', (route) =>
+    route.fulfill({
+      contentType: 'application/javascript',
+      body: `
+      let stage='idle', speaking=false;
+      export const voiceApi = {
+        status:async()=>({stage,model:{ready:true,bytes:147951465},downloaded_bytes:0,recording:{active:stage==='recording',seconds:1},speaking}),
+        start:async()=>{stage='recording'},
+        finish:async()=>{stage='idle';return 'Voice transcript for review.'},
+        cancel:async()=>{stage='idle'},download:async()=>{},
+        speak:async()=>{speaking=true},stop:async()=>{speaking=false}
+      };
+    `,
+    }),
+  );
   await page.goto('/');
   await page.getByTitle('Layout fixture').click();
   await expect(page.locator('[data-slot="message"]').first()).toBeVisible();
@@ -51,6 +66,30 @@ test('shadcn Chat aligns user bubbles right and assistant replies left', async (
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
     true,
   );
+});
+
+test('dictation appends to the draft for review without sending', async ({ page }) => {
+  await fixture(page);
+  const draft = page.getByLabel('Message JARVIS');
+  await draft.fill('Existing draft.');
+  await page.getByRole('button', { name: 'Record voice message', exact: true }).click();
+  await expect(page.getByText('Listening · 1 / 30s')).toBeVisible();
+  await expect(draft).toBeDisabled();
+  await page.getByRole('button', { name: 'Finish', exact: true }).click();
+  await expect(draft).toHaveValue('Existing draft.\nVoice transcript for review.');
+  await expect(draft).toBeEnabled();
+  await expect(page.locator('.generation-status')).toHaveCount(0);
+  await expect(page.locator('[data-slot="message"]')).toHaveCount(2);
+  await page.screenshot({ path: test.info().outputPath('voice-draft.png') });
+});
+
+test('reply playback starts only on request and can be stopped', async ({ page }) => {
+  await fixture(page);
+  await expect(page.getByText('Reading reply aloud', { exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Read reply aloud' }).click();
+  await expect(page.getByText('Reading reply aloud', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Stop speaking' }).click();
+  await expect(page.getByText('Reading reply aloud', { exact: true })).toHaveCount(0);
 });
 
 test('renders both tuned orb sizes for thinking and pauses them under reduced motion', async ({

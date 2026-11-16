@@ -21,7 +21,7 @@ Tauri commands → AssistantService → domain ports
 - `MessageContent` is loaded only when an assistant answer needs formatting. It memoizes unchanged messages and defers Markdown parsing during streaming. An explicit element allowlist, skipped raw HTML, inert links and image placeholders keep untrusted output from executing or fetching content. Code blocks and tables scroll within their message.
 - `src/components/ui/`: shadcn/ui source components generated from the official registry. The local `cn` helper is in `src/lib/utils.ts`. Small local customizations include scroll viewport props, destructive button contrast, and 44px minimum targets.
 - `src/components/feedback/ActivityOrb.tsx`: shared Libraries.dev Thinking Orb adapter. Uses the separately tuned 64px avatar and 20px inline sizes; surrounding text carries the accessible status. Honors system reduced motion. The library suspends animation when hidden/offscreen.
-- `src/infrastructure/tauri/assistant-api.ts`: the only frontend adapter importing the Tauri SDK. Converts the stream callback to a typed IPC channel.
+- `src/infrastructure/tauri/`: frontend adapters importing the Tauri SDK. The assistant adapter converts streaming callbacks to a typed IPC channel; the voice adapter implements `VoiceGateway`.
 - `src/App.tsx`: composition and shell. Wires the concrete adapter into the controller.
 - `src/ui.css`: Tailwind 4 and shadcn theme; `src/style.css`: application-specific layout and theme. All fonts/assets are local. Motion uses `LazyMotion`, with system reduced-motion preferences honored.
 
@@ -39,6 +39,16 @@ The shadcn Sidebar is configured as an always-visible desktop sidebar. Chat foll
 - `src-tauri/src/commands.rs`: thin Tauri handlers and channel-to-EventSink translation. `DesktopState` carries the application service and runtime metadata.
 - `src-tauri/src/lib.rs`: composition root. Creates concrete adapters, opens app data, registers one-instance behavior and wires handlers.
 
+## Voice boundaries
+
+`domain/voice.rs` defines recorder, recognizer, model and speech-output ports. `application/voice.rs` coordinates mutually exclusive recording/transcription/setup, cancellation, audio validation/resampling and bounded Markdown-to-speech text. A scope guard resets the voice stage after completion or errors. The Tauri handlers accept no arbitrary audio path, model URL or speech text: read-aloud looks up a saved, completed assistant message by ID.
+
+`infrastructure/voice/` implements CPAL default-device capture, CPU Whisper recognition, fixed SHA-256-verified model setup, and native system speech. Capture averages channels into mono, bounds allocation to 30 seconds, and has a native watchdog independent of WebView timers. Cancellation drops the stream; decoding observes cancellation and a two-minute deadline. Samples remain in memory. Model setup uses a separate HTTPS client with bounded redirects and a temporary file; only a correctly sized, verified model is persisted. The original loopback-only inference client is unchanged.
+
+`features/voice/useVoice.ts` receives `VoiceGateway`, owns the user-driven lifecycle and polls only while work/playback is active. Conversation changes invalidate pending transcripts. The composition root appends successful dictation to the existing draft, without invoking chat send. Read-aloud is explicit and never triggered by a model response. Browser tests use a fake voice adapter; native service tests use fake ports. An ignored, opt-in public-WAV test exercises real Whisper without capturing a microphone.
+
+The macOS bundle declares microphone purpose and audio-input entitlement. Microphone access remains subject to OS privacy controls. No shell/Node/Python service or model-callable voice tool is added.
+
 ## Adding capabilities
 
 Add a domain proposal type describing one concrete action and its exact scope. Implement an application authorization use case backed by a durable audit record and explicit user approval. Only then implement platform adapters. Keep arbitrary commands, model-generated approvals and unrestricted paths out of the IPC surface. Register the smallest new command permission and add boundary tests before exposing a UI control.
@@ -47,4 +57,4 @@ To add another local model provider, implement `ModelGateway` and wire it in the
 
 ## Verification boundaries
 
-The UI tests mock the gateway adapter. Native tests use real SQLite (including closing and reopening an on-disk database), real HTTP/SSE fixtures on ephemeral loopback ports and abstract event sinks. Windows native builds and live Qwen chat were verified during development. macOS runtime, signing and installer flows require a Mac and are not claimed as verified.
+The UI tests mock the gateway adapters. Native tests use real SQLite (including closing and reopening an on-disk database), real HTTP/SSE fixtures on ephemeral loopback ports and abstract event sinks. Windows native builds and live Qwen chat were verified during development. Voice verification includes actual fixed-model download/checksum and CPU recognition of the public sample. Microphone hardware, audible system playback, macOS runtime, signing and installer flows still require hands-on verification and are not claimed as tested.

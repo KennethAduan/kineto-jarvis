@@ -8,8 +8,19 @@ import { ChatWorkspace } from './features/assistant/ChatWorkspace';
 import { RuntimePanel } from './features/assistant/RuntimePanel';
 import { ActivityView, PermissionsView } from './features/assistant/WorkspacePages';
 import { DeleteConversationDialog } from './features/assistant/DeleteConversationDialog';
+import { voiceApi } from './infrastructure/tauri/voice-api';
+import { useVoice } from './features/voice/useVoice';
+import { VoiceSetup } from './features/voice/VoiceControls';
 export default function App() {
   const assistant = useAssistant(api, desktop);
+  const voice = useVoice(voiceApi, desktop, assistant.selected, (text) => {
+    const combined = assistant.draft ? `${assistant.draft}\n${text}` : text;
+    if (combined.length > 16_000) {
+      assistant.setError('The draft is too long to add dictation. Shorten it, then record again.');
+      return;
+    }
+    assistant.setDraft(combined);
+  });
   const {
     boot,
     page,
@@ -29,6 +40,7 @@ export default function App() {
         Skip to workspace
       </a>
       <AppSidebar assistant={assistant} />
+      <VoiceSetup voice={voice} />
 
       <main id="main-content" tabIndex={-1}>
         <header className="topbar">
@@ -68,7 +80,7 @@ export default function App() {
         />
 
         {page === 'chat' ? (
-          <ChatWorkspace assistant={assistant} desktop={desktop} />
+          <ChatWorkspace assistant={assistant} desktop={desktop} voice={voice} />
         ) : page === 'activity' ? (
           <ActivityView activity={activity} />
         ) : (

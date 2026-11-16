@@ -22,7 +22,22 @@ pub fn permissions() -> Vec<Permission> {
             description: "No file tools or command execution registered.",
         },
         Permission {
-            capability: "Web, voice & MCP",
+            capability: "Voice input",
+            state: "on-demand",
+            description: "User-started microphone recording, up to 30 seconds. Whisper runs locally; audio stays in memory.",
+        },
+        Permission {
+            capability: "Voice playback",
+            state: "on-demand",
+            description: "Read a completed reply with the installed system voice. No automatic playback.",
+        },
+        Permission {
+            capability: "Speech model setup",
+            state: "on-demand",
+            description: "Explicit download of a fixed, checksum-verified public speech model. No audio is uploaded.",
+        },
+        Permission {
+            capability: "Web & MCP",
             state: "disabled",
             description: "No external integrations are active.",
         },

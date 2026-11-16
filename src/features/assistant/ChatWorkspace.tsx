@@ -1,6 +1,6 @@
 import { AnimatePresence } from 'motion/react';
 import * as motion from 'motion/react-m';
-import { ArrowUp, ChevronRight, Cpu, ShieldCheck, Square, Radio } from 'lucide-react';
+import { ArrowUp, ChevronRight, Cpu, ShieldCheck, Square, Radio, Volume2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ActivityOrb } from '@/components/feedback/ActivityOrb';
@@ -18,6 +18,7 @@ import {
   MessageAvatar,
   MessageContent as ChatMessageContent,
   MessageHeader,
+  MessageFooter,
 } from '@/components/ui/message';
 import { Bubble, BubbleContent } from '@/components/ui/bubble';
 import {
@@ -31,6 +32,8 @@ import { GenerationStatus } from './GenerationStatus';
 import type { AssistantController } from './useAssistant';
 import { lazy, Suspense } from 'react';
 const MessageContent = lazy(() => import('./MessageContent'));
+import { VoiceActivity, VoiceMicButton, VoiceSettingsButton } from '@/features/voice/VoiceControls';
+import type { VoiceController } from '@/features/voice/useVoice';
 const suggestions = [
   'Help me plan my day',
   'Explain a complex idea simply',
@@ -39,9 +42,11 @@ const suggestions = [
 export function ChatWorkspace({
   assistant,
   desktop,
+  voice,
 }: {
   assistant: AssistantController;
   desktop: boolean;
+  voice: VoiceController;
 }) {
   const {
     boot,
@@ -197,6 +202,24 @@ export function ChatWorkspace({
                               )}
                             </BubbleContent>
                           </Bubble>
+                          {message.role === 'assistant' &&
+                            message.status === 'complete' &&
+                            message.content.trim() && (
+                              <MessageFooter className="message-actions">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  aria-label="Read reply aloud"
+                                  title="Read reply aloud with the system voice"
+                                  disabled={
+                                    !voice.available || !!voice.pending || voice.stage !== 'idle'
+                                  }
+                                  onClick={() => void voice.speak(message)}
+                                >
+                                  <Volume2 className="size-4" aria-hidden="true" />
+                                </Button>
+                              </MessageFooter>
+                            )}
                         </ChatMessageContent>
                       </Message>
                     </MessageScrollerItem>
@@ -209,6 +232,7 @@ export function ChatWorkspace({
         <MessageScrollerButton aria-label="Latest message" className="chat-scroll-button" />
       </MessageScroller>
       <div className="composer-wrap">
+        <VoiceActivity voice={voice} />
         <AnimatePresence initial={false}>
           {busy && <GenerationStatus key="generation" thinking={thinking} />}
         </AnimatePresence>
@@ -229,7 +253,7 @@ export function ChatWorkspace({
           className="composer-form"
           onSubmit={(e) => {
             e.preventDefault();
-            void send();
+            if (!voice.dictating) void send();
           }}
         >
           <InputGroup className="composer" aria-label="Message composer">
@@ -245,15 +269,19 @@ export function ChatWorkspace({
               placeholder="What’s on your mind?"
               aria-describedby="composer-guidance"
               onChange={(e) => setDraft(e.target.value)}
-              disabled={busy}
+              disabled={busy || voice.dictating}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
                   e.preventDefault();
-                  void send();
+                  if (!voice.dictating) void send();
                 }
               }}
             />
             <InputGroupAddon align="block-end" className="composer-toolbar">
+              <div className="composer-voice-tools">
+                <VoiceMicButton voice={voice} disabled={busy || loading} />
+                <VoiceSettingsButton voice={voice} />
+              </div>
               <InputGroupText>
                 <ShieldCheck aria-hidden="true" size={14} /> Stays on this device
               </InputGroupText>
@@ -275,7 +303,14 @@ export function ChatWorkspace({
                   size="icon-sm"
                   className="send-button"
                   type="submit"
-                  disabled={!draft.trim() || !model || connection !== 'online' || !boot || loading}
+                  disabled={
+                    !draft.trim() ||
+                    !model ||
+                    connection !== 'online' ||
+                    !boot ||
+                    loading ||
+                    voice.dictating
+                  }
                   aria-label="Send message"
                   title="Send message (Enter)"
                 >
