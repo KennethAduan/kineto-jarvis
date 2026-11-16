@@ -35,6 +35,29 @@ impl Store {
     }
 }
 impl ConversationRepository for Store {
+    fn search(&self, query: &str) -> Result<Vec<Conversation>, String> {
+        let mut statement = self
+            .0
+            .prepare(
+                "SELECT c.id,c.title,c.updated_at FROM conversations c
+             WHERE instr(lower(c.title),lower(?1))>0 OR EXISTS (
+               SELECT 1 FROM messages m WHERE m.conversation_id=c.id
+               AND instr(lower(m.content),lower(?1))>0)
+             ORDER BY c.updated_at DESC,c.rowid DESC LIMIT 100",
+            )
+            .map_err(|error| error.to_string())?;
+        let rows = statement
+            .query_map([query], |row| {
+                Ok(Conversation {
+                    id: row.get(0)?,
+                    title: row.get(1)?,
+                    updated_at: row.get(2)?,
+                })
+            })
+            .map_err(|error| error.to_string())?;
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|error| error.to_string())
+    }
     fn conversations(&self) -> Result<Vec<Conversation>, String> {
         let mut stmt = self
             .0
@@ -165,6 +188,37 @@ impl ConversationRepository for Store {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn searches_titles_and_saved_answers_without_treating_input_as_sql_or_wildcards() {
+        let mut store = Store::initialize(Connection::open_in_memory().unwrap()).unwrap();
+        let first = store.create().unwrap();
+        let answer = store
+            .begin(&first.id, "Alpha project", "qwen", "task-a")
+            .unwrap();
+        store
+            .finish(
+                &answer,
+                "task-a",
+                "Remember the nebula milestone",
+                "complete",
+                "Done",
+            )
+            .unwrap();
+        let second = store.create().unwrap();
+        let answer = store
+            .begin(&second.id, "Other project", "qwen", "task-b")
+            .unwrap();
+        store
+            .finish(&answer, "task-b", "Literal %_ and 🦀", "complete", "Done")
+            .unwrap();
+        assert_eq!(store.search("ALPHA").unwrap()[0].id, first.id);
+        assert_eq!(store.search("nebula").unwrap()[0].id, first.id);
+        assert_eq!(store.search("%_").unwrap()[0].id, second.id);
+        assert_eq!(store.search("🦀").unwrap()[0].id, second.id);
+        assert!(store.search("' OR 1=1 --").unwrap().is_empty());
+        store.delete(&first.id).unwrap();
+        assert!(store.search("nebula").unwrap().is_empty());
+    }
     #[test]
     fn completed_history_survives_closing_and_reopening_database_file() {
         let directory = tempfile::tempdir().unwrap();

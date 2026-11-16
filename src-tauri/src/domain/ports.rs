@@ -4,6 +4,7 @@ use futures_util::{future::BoxFuture, stream::BoxStream};
 /// Ports contain no Tauri, SQLite, reqwest, filesystem or platform dependencies.
 pub trait ConversationRepository: Send {
     fn conversations(&self) -> Result<Vec<Conversation>, String>;
+    fn search(&self, query: &str) -> Result<Vec<Conversation>, String>;
     fn create(&self) -> Result<Conversation, String>;
     fn messages(&self, id: &str) -> Result<Vec<Message>, String>;
     fn begin(

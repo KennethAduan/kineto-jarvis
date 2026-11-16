@@ -42,6 +42,8 @@ For browser layout and Orb rendering regressions, run `pnpm exec playwright inst
 - Discover exact LM Studio model IDs via `GET /v1/models`.
 - Stream `POST /v1/chat/completions` through Rust and a typed Tauri channel. Reasoning deltas produce a thinking indicator; they are not saved as the final answer.
 - Libraries.dev Thinking Orbs show the current thinking/composing state in the assistant avatar and inline activity row. Animation pauses for reduced motion and when the component is not visible.
+- Assistant replies support Markdown headings, lists, tables, task lists and code blocks, including unfinished code blocks during streaming. Raw HTML is skipped; links are displayed as text and remote images as placeholders, so a model cannot cause navigation or remote requests.
+- Search conversation titles and saved user/assistant messages locally from the sidebar. Queries are debounced, limited to 200 characters and return the 100 most recently updated matching conversations. Clearing search restores the complete list.
 - Stop an active generation; save the partial answer and final task state. Truncated/malformed streams become failed tasks with partial text retained.
 - SQLite conversation list, messages, deletion and the latest 100 generation activities. Restart recovery marks unfinished messages/tasks interrupted. Streamed text is checkpointed approximately once per second; a crash may lose the last second of text.
 - Native platform interface with Windows and macOS adapters. Neither implements automation yet.
@@ -56,7 +58,7 @@ React UI → allowlisted Tauri commands → Rust
                                       └─ NativePlatform → Windows / macOS (tools disabled)
 ```
 
-The frontend has no shell, filesystem, HTTP or external-link plugins. Explicit app command permissions are restricted to the bundled main window; remote origins receive no capability. A production CSP blocks external scripts, frames and browser network access. Rust uses a fixed loopback URL, ignores proxy environment variables and refuses redirects. Model output is rendered as plain text, never HTML. No model tools are advertised; any tool-call delta fails closed. There is no cloud fallback, analytics or telemetry.
+The frontend has no shell, filesystem, HTTP or external-link plugins. Explicit app command permissions are restricted to the bundled main window; remote origins receive no capability. A production CSP blocks external scripts, frames and browser network access. Rust uses a fixed loopback URL, ignores proxy environment variables and refuses redirects. Assistant output uses an allowlisted Markdown renderer with raw HTML, navigation and remote media disabled; user messages remain literal text. No model tools are advertised; any tool-call delta fails closed. There is no cloud fallback, analytics or telemetry.
 
 Only a single app instance can run. SQLite writes are transactional; identifiers are generated in Rust and database queries are parameterized. User prompts are limited to 16,000 characters; inference uses the newest 40 completed messages up to 48,000 characters, plus the system prompt. This character bound is not a model-specific token budget: reduce long prompts if your configured context is smaller. Requests have connection/idle timeouts, a 15-minute total generation limit, a 4,096-token generation limit and a 2 MiB response limit.
 
@@ -66,6 +68,6 @@ The current permission screen is read-only scaffolding. It intentionally cannot 
 
 The SQLite file is `jarvis.db` in Tauri's application data directory for `com.kineto.jarvis` (normally `%APPDATA%/com.kineto.jarvis` on Windows and `~/Library/Application Support/com.kineto.jarvis` on macOS). It is **not encrypted**. OS account permissions and disk encryption protect it. A local process can impersonate LM Studio on the fixed port; this MVP assumes the user's OS account and local inference service are trusted. Deletion removes rows and associated task history, not a forensic secure erase of SQLite/WAL/disk blocks.
 
-No voice, web search, MCP, file access or computer control is implemented. No model download management, authentication token storage, attachments, Markdown rendering, token-aware context management, secure erase or signed installers are included. Windows is the development target; the architecture is macOS-compatible, but macOS runtime behavior requires verification on a Mac.
+No voice, web search, MCP, file access or computer control is implemented. No model download management, authentication token storage, attachments, token-aware context management, secure erase or signed installers are included. Windows is the development target. Windows and macOS CI checks passed for the initial MVP; macOS runtime behavior still requires verification on a Mac.
 
 API references: [Tauri channels](https://v2.tauri.app/develop/calling-frontend/), [Tauri capabilities](https://v2.tauri.app/security/capabilities/), [LM Studio chat completions](https://lmstudio.ai/docs/developer/openai-compat/chat-completions).

@@ -3,6 +3,7 @@ import type { AssistantGateway } from '../../domain/ports';
 import type { Activity, Bootstrap, Conversation, Message, Model } from '../../domain/models';
 import { preferredModel } from '../../domain/preferred-model';
 import { errorText } from '../../lib/errors';
+import { useConversationSearch } from './useConversationSearch';
 type Page = 'chat' | 'activity' | 'permissions';
 export function useAssistant(api: AssistantGateway, desktop: boolean) {
   const [boot, setBoot] = useState<Bootstrap | null>(null);
@@ -30,6 +31,7 @@ export function useAssistant(api: AssistantGateway, desktop: boolean) {
   const textarea = useRef<HTMLTextAreaElement>(null);
   const nearBottom = useRef(true);
   const title = conversations.find((c) => c.id === selected)?.title ?? 'Your personal intelligence';
+  const history = useConversationSearch(api, conversations, desktop && boot !== null);
 
   async function checkConnection() {
     if (modelCheck.current) return;
@@ -209,6 +211,7 @@ export function useAssistant(api: AssistantGateway, desktop: boolean) {
   }
 
   return {
+    history,
     boot,
     conversations,
     messages,

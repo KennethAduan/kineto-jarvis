@@ -10,6 +10,8 @@ import { ActivityOrb } from '@/components/feedback/ActivityOrb';
 import { time } from '@/lib/format';
 import { GenerationStatus } from './GenerationStatus';
 import type { AssistantController } from './useAssistant';
+import { lazy, Suspense } from 'react';
+const MessageContent = lazy(() => import('./MessageContent'));
 const suggestions = [
   'Help me plan my day',
   'Explain a complex idea simply',
@@ -141,10 +143,16 @@ export function ChatWorkspace({
                     )}
                   </div>
                   <div className="message-content">
-                    {message.content ||
+                    {message.content && message.role === 'assistant' ? (
+                      <Suspense fallback={<span>{message.content}</span>}>
+                        <MessageContent content={message.content} />
+                      </Suspense>
+                    ) : (
+                      message.content ||
                       (message.status === 'streaming'
                         ? 'Preparing a response…'
-                        : 'No response saved.')}
+                        : 'No response saved.')
+                    )}
                   </div>
                 </div>
               </Card>

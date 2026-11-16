@@ -1,6 +1,12 @@
 import { test, expect, type Page } from '@playwright/test';
 
-async function fixture(page: Page) {
+async function fixture(page: Page, answer?: string) {
+  const response =
+    answer ??
+    'Let’s make room for what matters. Start by choosing one important task, then set aside a focused block of time. Leave a little space for breaks and unexpected work. ' +
+      'A longer answer should wrap naturally inside the conversation, rather than stretching the page. '.repeat(
+        6,
+      );
   await page.route('**/src/infrastructure/tauri/assistant-api.ts*', (route) =>
     route.fulfill({
       contentType: 'application/javascript',
@@ -9,11 +15,12 @@ async function fixture(page: Page) {
       const conversation = {id:'fixture',title:'Layout fixture',updated_at:1};
       const messages = [
         {id:'user',conversation_id:'fixture',role:'user',content:'Help me plan my day.',status:'complete',created_at:1},
-        {id:'assistant',conversation_id:'fixture',role:'assistant',content:'Let’s make room for what matters. Start by choosing one important task, then set aside a focused block of time. Leave a little space for breaks and unexpected work. '+ 'A longer answer should wrap naturally inside the conversation, rather than stretching the page. '.repeat(6),status:'complete',created_at:1}
+        {id:'assistant',conversation_id:'fixture',role:'assistant',content:${JSON.stringify(response)},status:'complete',created_at:1}
       ];
       export const api = {
         bootstrap:async()=>({conversations:[conversation],activity:[],platform:{name:'Windows',automation_available:false},permissions:[],endpoint:'http://127.0.0.1:1234/v1'}),
         models:async()=>[{id:'qwen-fixture'}], messages:async()=>messages, activity:async()=>[],
+        search:async(query)=>(conversation.title+' '+messages.map(message=>message.content).join(' ')).toLowerCase().includes(query.toLowerCase()) ? [conversation] : [],
         create:async()=>conversation, delete:async()=>{}, cancel:async()=>{},
         send:async(id,content,model,onEvent)=>{onEvent({kind:'started',message:{id:'pending',conversation_id:id,role:'assistant',content:'',status:'streaming',created_at:1}});onEvent({kind:'thinking'});await new Promise(()=>{});}
       };
@@ -76,4 +83,46 @@ test('conversation fits the minimum desktop width', async ({ page }) => {
   );
   const body = await page.locator('.message-body').first().boundingBox();
   expect(body!.width).toBeGreaterThan(200);
+});
+
+test('search finds a conversation by saved message text and clearing restores history', async ({
+  page,
+}) => {
+  await fixture(page);
+  await page.getByLabel('Search conversations').fill('longer answer');
+  await expect(page.getByText('Searching locally…')).toHaveCount(0);
+  await expect(page.getByTitle('Layout fixture')).toBeVisible();
+  await page.getByLabel('Search conversations').fill('no matching phrase');
+  await expect(page.getByText('No matching conversations.')).toBeVisible();
+  await expect(page.getByTitle('Layout fixture')).toHaveCount(0);
+  await page.getByLabel('Clear conversation search').click();
+  await expect(page.getByTitle('Layout fixture')).toBeVisible();
+});
+
+test('formats answers without fetching images or allowing model-generated navigation', async ({
+  page,
+}) => {
+  const remoteRequests: string[] = [];
+  page.on('request', (request) => {
+    if (request.url().startsWith('https://example.invalid')) remoteRequests.push(request.url());
+  });
+  await page.setViewportSize({ width: 760, height: 700 });
+  await fixture(
+    page,
+    '# Your plan\n\n- **Focus** first\n- Take a break\n\n```ts\n' +
+      'const example = "' +
+      'x'.repeat(300) +
+      '";\n```\n\n| Task | Time |\n| --- | --- |\n| Build | Morning |\n\n[Reference](https://example.invalid/docs)\n\n![Private image](https://example.invalid/pixel.png)\n\n<script>alert(1)</script>',
+  );
+  await expect(page.getByRole('heading', { name: 'Your plan', level: 2 })).toBeVisible();
+  await expect(page.locator('pre code')).toContainText('const example');
+  await expect(page.getByRole('table')).toBeAttached();
+  await expect(
+    page.locator('.message-content a,.message-content img,.message-content script'),
+  ).toHaveCount(0);
+  expect(remoteRequests).toHaveLength(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  );
+  await page.screenshot({ path: test.info().outputPath('formatted-chat.png') });
 });

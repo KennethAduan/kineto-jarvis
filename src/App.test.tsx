@@ -10,6 +10,7 @@ vi.mock('./infrastructure/tauri/assistant-api', async (importOriginal) => ({
   desktop: true,
   api: {
     bootstrap: vi.fn(),
+    search: vi.fn(),
     models: vi.fn(),
     messages: vi.fn(),
     create: vi.fn(),
@@ -39,6 +40,7 @@ const boot = {
 beforeEach(() => {
   vi.resetAllMocks();
   vi.mocked(api.bootstrap).mockResolvedValue(boot);
+  vi.mocked(api.search).mockResolvedValue([]);
   vi.mocked(api.models).mockResolvedValue([{ id: 'qwen/qwen3.5-9b' }]);
   vi.mocked(api.messages).mockResolvedValue([message]);
   vi.mocked(api.activity).mockResolvedValue([]);
@@ -114,13 +116,13 @@ describe('assistant workflow', () => {
     await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
     expect(api.delete).not.toHaveBeenCalled();
   });
-  it('renders model text as plain text, never executable HTML', async () => {
+  it('keeps user messages as literal text, never executable HTML', async () => {
     vi.mocked(api.bootstrap).mockResolvedValue({
       ...boot,
       conversations: [{ id: 'c', title: 'Saved', updated_at: 1 }],
     });
     vi.mocked(api.messages).mockResolvedValue([
-      { ...message, content: '<img src=x onerror="alert(1)">' },
+      { ...message, role: 'user', content: '<img src=x onerror="alert(1)">' },
     ]);
     render(<App />);
     fireEvent.click(await screen.findByTitle('Saved'));

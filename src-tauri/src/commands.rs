@@ -28,6 +28,13 @@ pub(crate) fn bootstrap(state: State<DesktopState>) -> Result<Bootstrap, String>
     })
 }
 #[tauri::command]
+pub(crate) async fn search_conversations(
+    state: State<'_, DesktopState>,
+    query: String,
+) -> Result<Vec<Conversation>, String> {
+    state.assistant.search(&query)
+}
+#[tauri::command]
 pub(crate) async fn discover_models(state: State<'_, DesktopState>) -> Result<Vec<Model>, String> {
     state.assistant.models().await
 }

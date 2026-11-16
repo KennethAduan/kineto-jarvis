@@ -9,6 +9,7 @@ fn main() {
             "send_message",
             "cancel_generation",
             "get_activity",
+            "search_conversations",
         ]),
     ))
     .expect("Tauri build failed");

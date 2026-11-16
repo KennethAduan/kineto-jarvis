@@ -8,6 +8,13 @@ use crate::{
 };
 use std::{sync::Mutex, time::Duration};
 struct TestSink<F>(F);
+#[test]
+fn search_rejects_blank_or_oversized_input_before_querying_storage() {
+    let service = state("http://127.0.0.1:1/v1");
+    assert!(service.search("  \n ").is_err());
+    assert!(service.search(&"a".repeat(201)).is_err());
+    assert!(service.search("valid search").unwrap().is_empty());
+}
 impl<F: Fn(StreamEvent) -> Result<(), String> + Send + Sync> EventSink for TestSink<F> {
     fn send(&self, event: StreamEvent) -> Result<(), String> {
         (self.0)(event)

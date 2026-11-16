@@ -169,6 +169,12 @@
 .conversation-list {
   overflow: auto;
   flex: 1;
+  min-height: 88px;
+}
+.sidebar nav,
+.sidebar .section-label,
+.history-search {
+  flex-shrink: 0;
 }
 .quiet {
   font-size: 12px;
@@ -607,6 +613,165 @@ h1 {
   max-width: 72ch;
   line-height: 1.8;
   color: #d5dfdc;
+}
+.markdown {
+  white-space: normal;
+}
+.markdown > :first-child {
+  margin-top: 0;
+}
+.markdown > :last-child {
+  margin-bottom: 0;
+}
+.markdown p {
+  margin: 0 0 14px;
+}
+.markdown :is(h2, h3, h4, h5, h6) {
+  font-weight: 600;
+  line-height: 1.4;
+  margin: 24px 0 12px;
+  color: #e5eceb;
+}
+.markdown h2 {
+  font-size: 21px;
+}
+.markdown h3 {
+  font-size: 18px;
+}
+.markdown :is(h4, h5, h6) {
+  font-size: 16px;
+}
+.markdown :is(ul, ol) {
+  padding-left: 24px;
+  margin: 12px 0 16px;
+}
+.markdown ul {
+  list-style: disc;
+}
+.markdown ol {
+  list-style: decimal;
+}
+.markdown li {
+  margin: 6px 0;
+  padding-left: 3px;
+}
+.markdown li > p {
+  margin-bottom: 6px;
+}
+.markdown code {
+  background: #a8e7d10d;
+  border: 1px solid #a8e7d11f;
+  border-radius: 4px;
+  padding: 2px 5px;
+  font:
+    13px ui-monospace,
+    Consolas,
+    monospace;
+}
+.markdown pre {
+  max-width: 100%;
+  overflow-x: auto;
+  padding: 16px;
+  margin: 16px 0;
+  background: #0b1213;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  white-space: pre;
+}
+.markdown pre code {
+  background: none;
+  border: 0;
+  padding: 0;
+  line-height: 1.7;
+}
+.markdown blockquote {
+  border-left: 3px solid #577e6d;
+  padding-left: 16px;
+  margin: 16px 0;
+  color: #b0c4ba;
+}
+.markdown hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 24px 0;
+}
+.markdown-link {
+  color: var(--accent);
+  overflow-wrap: anywhere;
+}
+.markdown-url,
+.markdown-image {
+  color: var(--muted);
+  font-size: 13px;
+}
+.markdown-table {
+  overflow-x: auto;
+  max-width: 100%;
+  margin: 16px 0;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+}
+.markdown table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.markdown :is(th, td) {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  min-width: 100px;
+}
+.markdown th {
+  background: #a8e7d10a;
+  color: var(--accent);
+}
+.markdown tr:last-child td {
+  border-bottom: 0;
+}
+.markdown input[type='checkbox'] {
+  margin-right: 8px;
+  accent-color: var(--accent);
+}
+.history-search {
+  display: flex;
+  align-items: center;
+  position: relative;
+  margin: 0 4px 12px;
+  gap: 8px;
+}
+.history-search > svg {
+  position: absolute;
+  left: 10px;
+  color: var(--muted);
+  pointer-events: none;
+}
+.history-search input {
+  width: 100%;
+  min-width: 0;
+  height: 44px;
+  padding: 8px 44px 8px 30px;
+  font-size: 12px;
+  border-color: var(--border);
+}
+.history-search button {
+  position: absolute;
+  right: 0;
+  width: 44px;
+  min-width: 44px;
+}
+.history-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.history-error {
+  padding: 0 8px;
+  color: var(--error);
+  font-size: 12px;
 }
 .message-status {
   border: 1px solid var(--border);

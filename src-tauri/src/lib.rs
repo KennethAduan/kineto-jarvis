@@ -42,7 +42,8 @@ pub fn run() {
             delete_conversation,
             send_message,
             cancel_generation,
-            get_activity
+            get_activity,
+            search_conversations
         ])
         .run(tauri::generate_context!())
         .expect("Failed to start Kineto Jarvis");

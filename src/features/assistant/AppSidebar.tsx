@@ -5,6 +5,8 @@ import {
   MessageSquare,
   ShieldCheck,
   Trash2,
+  Search,
+  X,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -17,9 +19,11 @@ import {
   SidebarMenuButton,
 } from '@/components/ui/sidebar';
 import type { AssistantController } from './useAssistant';
+import { Input } from '@/components/ui/input';
+import { ActivityOrb } from '@/components/feedback/ActivityOrb';
 export function AppSidebar({ assistant }: { assistant: AssistantController }) {
-  const { boot, busy, page, setPage, setDeleteId, conversations, selected, openConversation } =
-    assistant;
+  const { boot, busy, page, setPage, setDeleteId, history, selected, openConversation } = assistant;
+  const conversations = history.conversations;
   return (
     <Sidebar collapsible="none" className="sidebar" aria-label="Workspace" role="complementary">
       <SidebarHeader className="p-0 gap-0">
@@ -41,7 +45,7 @@ export function AppSidebar({ assistant }: { assistant: AssistantController }) {
           <span className="shortcut">＋</span>
         </Button>
       </SidebarHeader>
-      <SidebarContent className="gap-0 overflow-hidden">
+      <SidebarContent className="gap-0">
         <div className="section-label">WORKSPACE</div>
         <nav aria-label="Main navigation">
           <SidebarMenu>
@@ -73,9 +77,45 @@ export function AppSidebar({ assistant }: { assistant: AssistantController }) {
         <div className="section-label recent-label">
           CONVERSATIONS <span>{conversations.length.toString().padStart(2, '0')}</span>
         </div>
+        <div className="history-search">
+          <Search size={14} aria-hidden="true" />
+          <Input
+            value={history.query}
+            maxLength={200}
+            disabled={!boot}
+            aria-label="Search conversations"
+            title="Search titles and saved messages"
+            placeholder="Search conversations…"
+            onChange={(event) => history.setQuery(event.target.value)}
+          />
+          {history.query && (
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Clear conversation search"
+              onClick={() => history.setQuery('')}
+            >
+              <X size={14} aria-hidden="true" />
+            </Button>
+          )}
+        </div>
+        {history.error && (
+          <p className="history-error" role="alert">
+            {history.error}
+          </p>
+        )}
         <div className="conversation-list">
-          {conversations.length === 0 ? (
-            <p className="quiet">Your conversations stay on this device.</p>
+          {history.searching ? (
+            <div className="history-status" role="status">
+              <ActivityOrb state="searching" />
+              Searching locally…
+            </div>
+          ) : conversations.length === 0 ? (
+            <p className="quiet">
+              {history.query.trim()
+                ? 'No matching conversations.'
+                : 'Your conversations stay on this device.'}
+            </p>
           ) : (
             conversations.map((c) => (
               <div className={`conversation-row ${selected === c.id ? 'selected' : ''}`} key={c.id}>

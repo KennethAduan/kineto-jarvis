@@ -13,6 +13,7 @@ import type {
 export const desktop = isTauri();
 export const api: AssistantGateway = {
   bootstrap: () => invoke<Bootstrap>('bootstrap'),
+  search: (query) => invoke<Conversation[]>('search_conversations', { query }),
   models: () => invoke<Model[]>('discover_models'),
   create: () => invoke<Conversation>('create_conversation'),
   messages: (id: string) => invoke<Message[]>('get_messages', { conversationId: id }),

@@ -11,6 +11,7 @@ import type {
 /** Application contract; the hook does not import Tauri or browser storage. */
 export interface AssistantGateway {
   bootstrap(): Promise<Bootstrap>;
+  search(query: string): Promise<Conversation[]>;
   models(): Promise<Model[]>;
   create(): Promise<Conversation>;
   messages(id: string): Promise<Message[]>;

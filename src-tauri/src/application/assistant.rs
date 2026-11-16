@@ -48,6 +48,13 @@ impl AssistantService {
     pub fn conversations(&self) -> Result<Vec<Conversation>, String> {
         locked(&self.store)?.conversations()
     }
+    pub fn search(&self, query: &str) -> Result<Vec<Conversation>, String> {
+        let query = query.trim();
+        if query.is_empty() || query.chars().count() > 200 {
+            return Err("Search must contain between 1 and 200 characters.".into());
+        }
+        locked(&self.store)?.search(query)
+    }
     pub fn create(&self) -> Result<Conversation, String> {
         locked(&self.store)?.create()
     }
