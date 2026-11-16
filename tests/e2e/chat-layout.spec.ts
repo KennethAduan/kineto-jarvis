@@ -22,26 +22,30 @@ async function fixture(page: Page, answer?: string) {
         models:async()=>[{id:'qwen-fixture'}], messages:async()=>messages, activity:async()=>[],
         search:async(query)=>(conversation.title+' '+messages.map(message=>message.content).join(' ')).toLowerCase().includes(query.toLowerCase()) ? [conversation] : [],
         create:async()=>conversation, delete:async()=>{}, cancel:async()=>{},
-        send:async(id,content,model,onEvent)=>{onEvent({kind:'started',message:{id:'pending',conversation_id:id,role:'assistant',content:'',status:'streaming',created_at:1}});onEvent({kind:'thinking'});await new Promise(()=>{});}
+        send:async(id,content,model,onEvent)=>{onEvent({kind:'started',message:{id:'pending',conversation_id:id,role:'assistant',content:'',status:'streaming',created_at:1}});onEvent({kind:'thinking'});globalThis.__emitChatDelta=(text)=>onEvent({kind:'delta',text});await new Promise(()=>{});}
       };
     `,
     }),
   );
   await page.goto('/');
   await page.getByTitle('Layout fixture').click();
-  await expect(page.getByRole('log')).toBeVisible();
+  await expect(page.locator('[data-slot="message"]').first()).toBeVisible();
 }
 
-test('short and long messages fill the thread with avatars beside the text', async ({ page }) => {
+test('shadcn Chat aligns user bubbles right and assistant replies left', async ({ page }) => {
   await fixture(page);
   const thread = await page.locator('.messages').boundingBox();
   expect(thread).not.toBeNull();
-  for (const card of await page.locator('.message').all()) {
+  for (const card of await page.locator('[data-slot="message"]').all()) {
     const box = (await card.boundingBox())!;
     const avatar = (await card.locator('.message-avatar').boundingBox())!;
     const body = (await card.locator('.message-body').boundingBox())!;
     expect(box.width).toBeGreaterThan(thread!.width * 0.8);
-    expect(body.x).toBeGreaterThanOrEqual(avatar.x + avatar.width);
+    if ((await card.getAttribute('data-align')) === 'end') {
+      expect(body.x + body.width).toBeLessThanOrEqual(avatar.x + 1);
+    } else {
+      expect(body.x).toBeGreaterThanOrEqual(avatar.x + avatar.width);
+    }
     expect(Math.abs(body.y - avatar.y)).toBeLessThan(2);
   }
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
@@ -83,6 +87,45 @@ test('conversation fits the minimum desktop width', async ({ page }) => {
   );
   const body = await page.locator('.message-body').first().boundingBox();
   expect(body!.width).toBeGreaterThan(200);
+});
+
+test('shadcn scrolling preserves older reading position and can return to the live reply', async ({
+  page,
+}) => {
+  await fixture(page);
+  await page.getByLabel('Message JARVIS').fill('Please continue.');
+  await page.getByRole('button', { name: 'Send message' }).click();
+  await expect(page.locator('.generation-status')).toContainText('JARVIS is thinking');
+  const emit = async (text: string) =>
+    page.evaluate((text) => {
+      (window as Window & { __emitChatDelta: (text: string) => void }).__emitChatDelta(text);
+    }, text);
+  await emit('A streaming paragraph with useful details.\n\n'.repeat(80));
+  const reply = page.locator('[data-slot="message"]').last();
+  await expect(reply).toContainText('A streaming paragraph');
+  const viewport = page.locator('[data-slot="message-scroller-viewport"]');
+  await viewport.hover();
+  await page.mouse.wheel(0, -10000);
+  await expect.poll(() => viewport.evaluate((element) => element.scrollTop)).toBeLessThan(5);
+  await emit('\n\nNew detail while you are reading earlier messages.');
+  await expect(reply).toContainText('New detail while you are reading');
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+      ),
+  );
+  expect(await viewport.evaluate((element) => element.scrollTop)).toBeLessThan(5);
+  const latest = page.getByRole('button', { name: 'Latest message' });
+  await expect(latest).toHaveAttribute('data-active', 'true');
+  await latest.click();
+  await expect
+    .poll(() =>
+      viewport.evaluate(
+        (element) => element.scrollHeight - element.scrollTop - element.clientHeight,
+      ),
+    )
+    .toBeLessThan(5);
 });
 
 test('search finds a conversation by saved message text and clearing restores history', async ({

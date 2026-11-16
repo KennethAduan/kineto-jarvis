@@ -15,7 +15,6 @@ export function useAssistant(api: AssistantGateway, desktop: boolean) {
   const [connection, setConnection] = useState<'checking' | 'online' | 'offline'>('checking');
   const [connectionError, setConnectionError] = useState('');
   const [checkedAt, setCheckedAt] = useState<number | null>(null);
-  const [showLatest, setShowLatest] = useState(false);
   const [error, setError] = useState('');
   const [selected, setSelected] = useState<string | null>(null);
   const [page, setPage] = useState<Page>('chat');
@@ -27,9 +26,7 @@ export function useAssistant(api: AssistantGateway, desktop: boolean) {
   const operation = useRef(false);
   const modelCheck = useRef(false);
   const selectionVersion = useRef(0);
-  const end = useRef<HTMLDivElement>(null);
   const textarea = useRef<HTMLTextAreaElement>(null);
-  const nearBottom = useRef(true);
   const title = conversations.find((c) => c.id === selected)?.title ?? 'Your personal intelligence';
   const history = useConversationSearch(api, conversations, desktop && boot !== null);
 
@@ -85,10 +82,6 @@ export function useAssistant(api: AssistantGateway, desktop: boolean) {
     };
   }, []);
 
-  useEffect(() => {
-    if (nearBottom.current) end.current?.scrollIntoView?.({ behavior: 'instant' });
-  }, [messages, thinking]);
-
   async function openConversation(id: string | null) {
     if (operation.current) return;
     const version = ++selectionVersion.current;
@@ -97,8 +90,6 @@ export function useAssistant(api: AssistantGateway, desktop: boolean) {
     setError('');
     setDeleteId(null);
     setMessages([]);
-    nearBottom.current = true;
-    setShowLatest(false);
     if (!id) {
       setLoading(false);
       textarea.current?.focus();
@@ -129,8 +120,6 @@ export function useAssistant(api: AssistantGateway, desktop: boolean) {
     setBusy(true);
     setError('');
     setThinking(false);
-    nearBottom.current = true;
-    setShowLatest(false);
     let id = selected;
     let submitted = false;
     try {
@@ -222,8 +211,6 @@ export function useAssistant(api: AssistantGateway, desktop: boolean) {
     connection,
     connectionError,
     checkedAt,
-    showLatest,
-    setShowLatest,
     error,
     setError,
     selected,
@@ -236,9 +223,7 @@ export function useAssistant(api: AssistantGateway, desktop: boolean) {
     thinking,
     deleteId,
     setDeleteId,
-    end,
     textarea,
-    nearBottom,
     title,
     checkConnection,
     openConversation,

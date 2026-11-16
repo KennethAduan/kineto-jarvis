@@ -425,6 +425,9 @@ h1 {
   align-self: center;
 }
 .composer {
+  height: auto;
+  flex-direction: column;
+  align-items: stretch;
   background: #151d1f;
   border: 1px solid #3a4c48;
   border-radius: 10px;
@@ -461,6 +464,7 @@ h1 {
   justify-content: space-between;
   gap: 12px;
   margin-top: 8px;
+  padding: 0;
 }
 .composer-toolbar > span {
   display: flex;
@@ -548,16 +552,13 @@ h1 {
   align-self: stretch;
   margin: 0 auto;
 }
-.message {
+.chat-message {
   display: flex;
-  flex-direction: row;
   align-items: flex-start;
   width: 100%;
   min-width: 0;
   gap: 14px;
-  padding: 20px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
+  padding: 0;
 }
 .message-avatar {
   display: flex;
@@ -565,6 +566,10 @@ h1 {
   align-items: flex-start;
   flex: 0 0 64px;
   min-height: 64px;
+  align-self: flex-start;
+  overflow: visible;
+  border-radius: 0;
+  background: transparent;
 }
 .message-avatar canvas {
   flex-shrink: 0;
@@ -598,7 +603,29 @@ h1 {
   gap: 10px;
   font-size: 12px;
   color: var(--muted);
-  margin: 3px 0 13px;
+  margin: 0;
+  padding: 0;
+}
+.assistant-bubble {
+  width: 100%;
+  max-width: 100%;
+}
+.assistant-bubble > [data-slot='bubble-content'] {
+  width: 100%;
+}
+.chat-message.user [data-slot='bubble-content'] {
+  padding: 12px 16px;
+}
+.chat-empty-content {
+  flex: 1;
+}
+.chat-scroll-button {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  padding: 0;
+  border: 1px solid var(--border);
+  z-index: 2;
 }
 .message-meta strong {
   color: #c4d6ce;
@@ -1159,27 +1186,10 @@ h1 {
   border-radius: 6px;
   white-space: nowrap;
 }
-.latest-button {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 0 auto 12px;
-  padding: 0 16px;
-  border: 1px solid #547464;
-  border-radius: 24px;
-  background: #192824;
-  color: var(--accent);
-  font-size: 12px;
-}
 .checked-at {
   color: var(--muted);
   font-size: 12px;
   margin-top: 12px;
-}
-.chat-scroll [data-radix-scroll-area-viewport] > div {
-  display: flex !important;
-  flex-direction: column;
-  min-height: 100%;
 }
 .welcome {
   flex: 1;
@@ -1429,9 +1439,8 @@ h1 {
   .messages {
     padding: 8px 16px;
   }
-  .message {
+  .chat-message {
     gap: 8px;
-    padding: 14px;
   }
   .composer-wrap {
     padding: 12px 16px 20px;

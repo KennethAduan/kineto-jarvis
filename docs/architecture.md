@@ -25,7 +25,7 @@ Tauri commands → AssistantService → domain ports
 - `src/App.tsx`: composition and shell. Wires the concrete adapter into the controller.
 - `src/ui.css`: Tailwind 4 and shadcn theme; `src/style.css`: application-specific layout and theme. All fonts/assets are local. Motion uses `LazyMotion`, with system reduced-motion preferences honored.
 
-The shadcn Sidebar is configured as an always-visible desktop sidebar. Chat is composed from shadcn Card, ScrollArea, Textarea, Button and Badge components. There is no invented upstream “shadcn chat” package. The confirmation uses Radix focus management through shadcn AlertDialog.
+The shadcn Sidebar is configured as an always-visible desktop sidebar. Chat follows the [official shadcn AI Elements Chat composition](https://ui.shadcn.com/docs/ai-elements/radix/chat): Message Scroller, Message, Bubble, and Input Group, using the Radix variant to match the rest of the app. The components live in `src/components/ui/`; scrolling is owned by `@shadcn/react/message-scroller`. User turns are scroll anchors, assistant replies stream underneath, and the built-in scroll button returns to the live edge. There is no parallel manual scrolling implementation in the application controller. Pairing optimistic user turns with the persistent assistant ID keeps anchor IDs stable when SQLite history is refreshed. Thinking Orbs and the restricted Markdown renderer remain presentation children of these primitives. The confirmation uses Radix focus management through shadcn AlertDialog.
 
 ## Native core
 
