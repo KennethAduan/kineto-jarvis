@@ -25,6 +25,7 @@ pub struct VoiceModeStatus {
 #[derive(Clone, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum VoiceModeEvent {
+    InputLevel { level: f32 },
     Phase { phase: VoiceModePhase },
     Transcript { text: String },
     Error { message: String },

@@ -44,6 +44,20 @@ struct Inner {
 }
 #[derive(Clone)]
 pub struct SpeechService(Arc<Inner>);
+pub struct SpeechStream {
+    sender: std::sync::mpsc::SyncSender<String>,
+    cancel: CancellationToken,
+}
+impl SpeechStream {
+    pub fn push(&self, text: String) -> Result<(), String> {
+        if self.cancel.is_cancelled() {
+            return Err("Voice reply stopped".into());
+        }
+        self.sender.try_send(text).map_err(|_| {
+            "Live speech queue is full or stopped. Stop voice mode and try a shorter answer.".into()
+        })
+    }
+}
 struct Job(Arc<Inner>);
 impl Drop for Job {
     fn drop(&mut self) {
@@ -130,6 +144,63 @@ impl SpeechService {
     }
 }
 impl SpeechService {
+    /// Reserves one cancellable playback worker for a bounded queue of sentences.
+    pub fn stream(&self, parent: &CancellationToken) -> Result<SpeechStream, String> {
+        let mut task = self.0.task.lock().map_err(|_| "Speech state unavailable")?;
+        if task.phase != SpeechPhase::Idle {
+            return Err("Stop the current speech action first.".into());
+        }
+        let preferences = *self
+            .0
+            .preferences
+            .lock()
+            .map_err(|_| "Voice preferences unavailable")?;
+        if preferences.voice != SpeechVoice::System && !self.0.model.info().ready {
+            return Err("Download the Kokoro voice pack first.".into());
+        }
+        let cancel = parent.child_token();
+        if cancel.is_cancelled() {
+            return Err("Voice reply stopped".into());
+        }
+        task.phase = SpeechPhase::Preparing;
+        task.cancel = cancel.clone();
+        task.error = None;
+        let (sender, receiver) = std::sync::mpsc::sync_channel::<String>(256);
+        let inner = self.0.clone();
+        let token = cancel.clone();
+        std::thread::Builder::new()
+            .name("live-local-speech".into())
+            .spawn(move || {
+                let _job = Job(inner.clone());
+                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    let deadline = Instant::now() + Duration::from_secs(600);
+                    while !token.is_cancelled() {
+                        if Instant::now() >= deadline {
+                            return Err("Live speech reached its time limit".to_owned());
+                        }
+                        match receiver.recv_timeout(Duration::from_millis(100)) {
+                            Ok(text) => run(&inner, &text, preferences, token.clone())?,
+                            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
+                            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+                        }
+                    }
+                    Ok(())
+                }))
+                .unwrap_or_else(|_| Err("Speech worker stopped unexpectedly".into()));
+                if let Err(error) = result {
+                    if !token.is_cancelled() {
+                        if let Ok(mut task) = inner.task.lock() {
+                            task.error = Some(error);
+                        }
+                    }
+                }
+            })
+            .map_err(|_| {
+                task.phase = SpeechPhase::Idle;
+                "Could not start live speech".to_owned()
+            })?;
+        Ok(SpeechStream { sender, cancel })
+    }
     fn start(&self, text: &str, preview: Option<SpeechPreferences>) -> Result<(), String> {
         if text.trim().is_empty() || text.chars().count() > 8_000 {
             return Err("Choose a reply with up to 8,000 speakable characters.".into());
@@ -381,11 +452,73 @@ mod tests {
         }
     }
     #[test]
+    fn streamed_model_sentences_reach_speech_before_completion_without_replaying_or_reading_emoji()
+    {
+        struct Sink;
+        impl crate::domain::ports::EventSink for Sink {
+            fn send(&self, _: crate::domain::models::StreamEvent) -> Result<(), String> {
+                Ok(())
+            }
+        }
+        use crate::{
+            application::live_speech::SpeakingSink,
+            domain::{models::StreamEvent, ports::EventSink},
+        };
+        let (speech, seen, _) = fixture(true, false, false);
+        let sink = SpeakingSink::new(&Sink, speech.clone(), CancellationToken::new());
+        sink.send(StreamEvent::Thinking).unwrap();
+        assert!(seen.0.lock().unwrap().is_empty());
+        sink.send(StreamEvent::Delta {
+            text: "Hey there! ".into(),
+        })
+        .unwrap();
+        until(|| seen.0.lock().unwrap().len() == 1);
+        assert!(speech.is_speaking());
+        sink.send(StreamEvent::Delta {
+            text: "How can I assist you today, Ito? 😊".into(),
+        })
+        .unwrap();
+        until(|| seen.0.lock().unwrap().len() == 2);
+        sink.finish(true).unwrap();
+        until(|| !speech.is_speaking());
+        assert_eq!(
+            seen.0.lock().unwrap().len(),
+            2,
+            "emoji tail must not create another utterance"
+        );
+    }
+    #[test]
+    fn live_queue_plays_before_input_finishes_and_cancels_pending_sentences() {
+        let (speech, seen, _) = fixture(true, false, false);
+        let parent = CancellationToken::new();
+        let stream = speech.stream(&parent).unwrap();
+        stream.push("The first sentence.".into()).unwrap();
+        until(|| seen.0.lock().unwrap().len() == 1);
+        // The model can still be generating; an open queue holds playback ownership.
+        assert!(speech.is_speaking());
+        stream.push("The next sentence.".into()).unwrap();
+        drop(stream);
+        until(|| !speech.is_speaking());
+        assert_eq!(seen.0.lock().unwrap().len(), 2);
+
+        let (speech, seen, _) = fixture(true, true, false);
+        let parent = CancellationToken::new();
+        let stream = speech.stream(&parent).unwrap();
+        stream.push("A slow first sentence.".into()).unwrap();
+        until(|| seen.0.lock().unwrap().len() == 1);
+        stream.push("This must never be spoken.".into()).unwrap();
+        parent.cancel();
+        until(|| !speech.is_speaking());
+        assert_eq!(seen.0.lock().unwrap().len(), 1);
+        assert!(stream.push("Late text".into()).is_err());
+    }
+    #[test]
     fn preview_does_not_save_and_read_aloud_uses_saved_voice() {
         let (speech, seen, store) = fixture(true, false, false);
         let preview = SpeechPreferences {
             voice: SpeechVoice::Fable,
             speed: 1.1,
+            volume: 1.,
         };
         speech.preview(preview).unwrap();
         until(|| speech.status().unwrap().phase == SpeechPhase::Idle);
@@ -394,6 +527,7 @@ mod tests {
         let saved = SpeechPreferences {
             voice: SpeechVoice::Daniel,
             speed: 1.2,
+            volume: 1.,
         };
         speech.save(saved).unwrap();
         speech.speak("A completed reply").unwrap();
@@ -419,7 +553,8 @@ mod tests {
         assert!(missing
             .save(SpeechPreferences {
                 voice: SpeechVoice::George,
-                speed: 5.
+                speed: 5.,
+                volume: 1.,
             })
             .is_err());
         assert_eq!(store.lock().unwrap().speed, 0.95);

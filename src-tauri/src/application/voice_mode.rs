@@ -35,6 +35,7 @@ struct Job(Arc<Inner>);
 impl Drop for Job {
     fn drop(&mut self) {
         if let Ok(mut task) = self.0.task.lock() {
+            task.cancel.cancel();
             task.enabled = false;
             task.phase = VoiceModePhase::Off;
         }
@@ -182,6 +183,17 @@ impl VoiceModeService {
         }
         Ok(())
     }
+    pub fn reply_token(&self) -> Result<Option<CancellationToken>, String> {
+        let task = self
+            .0
+            .task
+            .lock()
+            .map_err(|_| "Voice mode state unavailable")?;
+        Ok(
+            (task.enabled && task.phase == VoiceModePhase::Paused && !task.cancel.is_cancelled())
+                .then(|| task.cancel.clone()),
+        )
+    }
 }
 fn phase(inner: &Inner, sink: &dyn VoiceModeSink, value: VoiceModePhase) -> Result<(), String> {
     inner
@@ -213,6 +225,7 @@ fn run(inner: &Inner, sink: &dyn VoiceModeSink, cancel: CancellationToken) -> Re
     let mut microphone = Some(inner.input.open()?);
     let mut listening = false;
     let mut started = Instant::now();
+    let mut meter_updated = Instant::now() - Duration::from_secs(1);
     phase(inner, sink, VoiceModePhase::Waiting)?;
     while live(inner, &cancel) {
         let paused = inner
@@ -246,6 +259,12 @@ fn run(inner: &Inner, sink: &dyn VoiceModeSink, cancel: CancellationToken) -> Re
         let Some(frame) = frame else {
             continue;
         };
+        if meter_updated.elapsed() >= Duration::from_millis(100) {
+            sink.emit(VoiceModeEvent::InputLevel {
+                level: input_level(&frame),
+            })?;
+            meter_updated = Instant::now();
+        }
         if !listening {
             if wake.feed(&frame) {
                 turn.reset();
@@ -303,9 +322,30 @@ pub fn strip_wake_phrase(text: &str) -> String {
     text.to_owned()
 }
 
+fn input_level(samples: &[f32]) -> f32 {
+    if samples.is_empty() {
+        return 0.;
+    }
+    let energy = samples
+        .iter()
+        .filter(|s| s.is_finite())
+        .map(|s| f64::from(*s).powi(2))
+        .sum::<f64>()
+        / samples.len() as f64;
+    // Map -60 dBFS through 0 dBFS to the visible meter range.
+    ((20. * energy.sqrt().max(0.000001).log10() + 60.) / 60.).clamp(0., 1.) as f32
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn meter_distinguishes_silence_from_captured_sound() {
+        assert_eq!(input_level(&[0.; 512]), 0.);
+        assert!(input_level(&[0.1; 512]) > 0.6);
+        assert_eq!(input_level(&[1.; 512]), 1.);
+        assert_eq!(input_level(&[f32::NAN; 512]), 0.);
+    }
     use crate::domain::voice::SpeechModelInfo;
     use futures_util::future::BoxFuture;
     use std::sync::atomic::{AtomicBool, AtomicUsize};

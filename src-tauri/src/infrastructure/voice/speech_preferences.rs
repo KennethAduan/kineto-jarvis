@@ -47,6 +47,7 @@ mod tests {
         let preferences = SpeechPreferences {
             voice: SpeechVoice::Fable,
             speed: 1.1,
+            volume: 1.,
         };
         JsonSpeechPreferences(path.clone())
             .save(preferences)

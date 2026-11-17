@@ -1,3 +1,4 @@
+use crate::domain::speech::spoken_text;
 use misaki_rs::{fallback::FallbackError, Fallback, Language, G2P};
 use std::{collections::HashMap, path::Path};
 
@@ -78,7 +79,7 @@ impl BritishPhonemizer {
     pub fn phonemes(&self, text: &str) -> Result<Vec<i32>, String> {
         let (phonemes, _) = self
             .0
-            .g2p(text)
+            .g2p(&spoken_text(text))
             .map_err(|_| "Could not prepare English pronunciation")?;
         if phonemes.contains('❓') {
             return Err("These Kokoro voices support English. Try the system voice for unsupported words or languages.".into());
@@ -96,6 +97,23 @@ impl BritishPhonemizer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn decorative_emoji_do_not_break_english_replies() {
+        let engine = BritishPhonemizer(G2P::with_fallback(
+            Language::EnglishGB,
+            Some(Box::new(BritishFallback(HashMap::new()))),
+        ));
+        assert_eq!(
+            engine
+                .phonemes("Hey there! How can I assist you today, Ito? 😊")
+                .unwrap(),
+            engine
+                .phonemes("Hey there! How can I assist you today, Ito?")
+                .unwrap()
+        );
+        assert_eq!(spoken_text("Hello 👨‍👩‍👧‍👦 🇬🇧 👍🏽 1️⃣"), "Hello 1");
+        assert_eq!(spoken_text("こんにちは"), "こんにちは");
+    }
     #[test]
     fn british_pronunciation_handles_plurals_numbers_and_unknown_ascii_words() {
         let engine = BritishPhonemizer(G2P::with_fallback(

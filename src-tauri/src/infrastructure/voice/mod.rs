@@ -1,6 +1,7 @@
 pub mod assets;
 pub mod kokoro;
 pub mod kokoro_model;
+mod loudness;
 pub mod microphone;
 pub mod model;
 pub mod phonemes;

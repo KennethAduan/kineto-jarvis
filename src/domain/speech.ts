@@ -2,6 +2,7 @@ export type SpeechVoice = 'bm_george' | 'bm_fable' | 'bm_daniel' | 'bm_lewis' | 
 export interface SpeechPreferences {
   voice: SpeechVoice;
   speed: number;
+  volume: number;
 }
 export interface SpeechStatus {
   preferences: SpeechPreferences;

@@ -31,19 +31,22 @@ export function SpeechSettings({
   const [preferences, setPreferences] = useState<SpeechPreferences>({
     voice: 'bm_george',
     speed: 0.95,
+    volume: 1,
   });
   const voice = speech.status?.preferences.voice;
   const speed = speech.status?.preferences.speed;
+  const volume = speech.status?.preferences.volume;
   useEffect(() => {
-    if (voice && speed !== undefined) setPreferences({ voice, speed });
-  }, [voice, speed]);
+    if (voice && speed !== undefined) setPreferences({ voice, speed, volume: volume ?? 1 });
+  }, [voice, speed, volume]);
   const phase = speech.status?.phase ?? 'idle';
   const downloading = phase === 'downloading' || speech.pending === 'download';
   const playing = phase === 'playing' || phase === 'preparing';
   const ready = speech.status?.model.ready ?? false;
   const system = preferences.voice === 'system';
   const disabled = !desktop || !speech.status || !!speech.pending || phase !== 'idle' || dictating;
-  const changed = preferences.voice !== voice || preferences.speed !== speed;
+  const changed =
+    preferences.voice !== voice || preferences.speed !== speed || preferences.volume !== volume;
   return (
     <section className="speech-settings" aria-labelledby="speech-heading">
       <div className="speech-heading">
@@ -91,6 +94,29 @@ export function SpeechSettings({
           {system
             ? 'The system voice uses its default speed.'
             : 'Slower and measured, or brisk and concise.'}
+        </small>
+      </div>
+      <div className="speech-field">
+        <div className="speech-speed-label">
+          <label id="speech-volume-label" htmlFor="speech-volume">
+            Output volume
+          </label>
+          <output htmlFor="speech-volume">{Math.round(preferences.volume * 100)}%</output>
+        </div>
+        <Slider
+          id="speech-volume"
+          aria-labelledby="speech-volume-label"
+          value={[preferences.volume]}
+          min={0}
+          max={1.5}
+          step={0.05}
+          onValueChange={([volume]) => setPreferences({ ...preferences, volume })}
+          disabled={disabled || system}
+        />
+        <small>
+          {system
+            ? 'Adjust the system voice in your operating system sound settings.'
+            : 'Quiet speech is normalized automatically. Peak protection prevents digital clipping.'}
         </small>
       </div>
       {!system && !ready && (

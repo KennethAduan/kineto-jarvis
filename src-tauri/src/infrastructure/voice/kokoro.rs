@@ -112,7 +112,7 @@ impl SpeechSynthesizer for Kokoro {
             return Err("Kokoro returned invalid or oversized audio".into());
         }
         Ok(SpeechAudio {
-            samples: samples.to_vec(),
+            samples: super::loudness::normalize(samples, preferences.volume),
             sample_rate: 24_000,
         })
     }
@@ -144,13 +144,21 @@ mod tests {
         ] {
             let audio = engine
                 .synthesize(
-                    "Good evening. All systems are ready. How may I assist you today?",
-                    SpeechPreferences { voice, speed },
+                    "Hey there! How can I assist you today, Ito? 😊",
+                    SpeechPreferences {
+                        voice,
+                        speed,
+                        ..Default::default()
+                    },
                     CancellationToken::new(),
                 )
                 .unwrap();
             assert!(audio.samples.len() > 24_000);
             assert!(audio.samples.iter().any(|sample| sample.abs() > 0.01));
+            assert!(audio
+                .samples
+                .iter()
+                .all(|sample| sample.is_finite() && sample.abs() <= 0.95001));
             lengths.push(audio.samples.len());
             let spec = hound::WavSpec {
                 channels: 1,

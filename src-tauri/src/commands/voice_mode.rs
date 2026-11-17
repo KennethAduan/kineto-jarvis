@@ -56,6 +56,9 @@ pub(crate) fn voice_mode_resume(
     state: State<DesktopState>,
     session_id: String,
 ) -> Result<(), String> {
+    if state.assistant.is_generating()? || state.speech.is_speaking() {
+        return Err("Wait for the reply and speech playback to finish before listening.".into());
+    }
     state.voice_mode.resume(&session_id)
 }
 #[tauri::command]

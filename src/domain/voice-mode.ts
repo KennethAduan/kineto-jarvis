@@ -15,6 +15,7 @@ export interface VoiceModeStatus {
   error: string | null;
 }
 export type VoiceModeEvent =
+  | { kind: 'input_level'; level: number }
   | { kind: 'phase'; phase: VoiceModePhase }
   | { kind: 'transcript'; text: string }
   | { kind: 'error'; message: string }

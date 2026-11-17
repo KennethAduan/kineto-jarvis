@@ -42,17 +42,24 @@ export function VoiceMicButton({ voice, disabled }: { voice: VoiceController; di
   );
 }
 
-export function VoiceActivity({ voice }: { voice: VoiceController }) {
+export function VoiceActivity({
+  voice,
+  modeError = '',
+}: {
+  voice: VoiceController;
+  modeError?: string;
+}) {
   const [dismissed, setDismissed] = useState('');
   const nativeError = voice.status?.playback_error ?? '';
   useEffect(() => {
     if (!nativeError) setDismissed('');
-  }, [nativeError]);
+    else if (nativeError === modeError) setDismissed(nativeError);
+  }, [nativeError, modeError]);
   const playbackError = voice.error || (nativeError !== dismissed ? nativeError : '');
   const active = voice.stage !== 'idle' || voice.pending === 'start' || voice.pending === 'finish';
   return (
     <>
-      {playbackError && (
+      {playbackError && playbackError !== modeError && (
         <div className="voice-error" role="alert">
           <span>{playbackError}</span>
           <Button

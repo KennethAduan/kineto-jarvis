@@ -73,6 +73,24 @@ export function VoiceConversation({ mode }: { mode: VoiceModeController }) {
               ? 'The microphone is paused while JARVIS responds.'
               : 'Your request is being processed on this device.'}
       </p>
+      <div className="voice-input-meter">
+        <div
+          role="meter"
+          aria-label="Microphone input level"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={Math.round(mode.inputLevel * 100)}
+        >
+          <span style={{ width: `${mode.inputLevel * 100}%` }} />
+        </div>
+        <small>
+          {waiting || listening
+            ? mode.inputLevel > 0.25
+              ? 'Audio detected · microphone is receiving sound'
+              : 'Speak to check your microphone'
+            : 'Microphone paused'}
+        </small>
+      </div>
       <div className="voice-turn-preview">
         {mode.lastUser && (
           <div>

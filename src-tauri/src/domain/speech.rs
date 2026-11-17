@@ -30,17 +30,26 @@ impl SpeechVoice {
 pub struct SpeechPreferences {
     pub voice: SpeechVoice,
     pub speed: f32,
+    #[serde(default = "default_volume")]
+    pub volume: f32,
+}
+fn default_volume() -> f32 {
+    1.0
 }
 impl Default for SpeechPreferences {
     fn default() -> Self {
         Self {
             voice: SpeechVoice::George,
             speed: 0.95,
+            volume: default_volume(),
         }
     }
 }
 impl SpeechPreferences {
     pub fn validate(&self) -> Result<(), String> {
+        if !self.volume.is_finite() || !(0.0..=1.5).contains(&self.volume) {
+            return Err("Choose an output volume between 0 and 150%.".into());
+        }
         if !self.speed.is_finite() || !(0.75..=1.25).contains(&self.speed) {
             return Err("Choose a speaking speed between 0.75 and 1.25.".into());
         }
@@ -66,4 +75,40 @@ pub trait AudioPlayback: Send + Sync {
 pub trait SpeechPreferencesStore: Send + Sync {
     fn load(&self) -> Result<SpeechPreferences, String>;
     fn save(&self, preferences: SpeechPreferences) -> Result<(), String>;
+}
+
+// Decorative emoji are not words. Keep unsupported letters intact so language errors stay visible.
+pub fn spoken_text(text: &str) -> String {
+    text.chars()
+        .map(|c| match c {
+            '\u{1f000}'..='\u{1faff}'
+            | '\u{2600}'..='\u{27bf}'
+            | '\u{fe0e}'
+            | '\u{fe0f}'
+            | '\u{200d}'
+            | '\u{20e3}' => ' ',
+            '‘' | '’' => '\'',
+            '“' | '”' => '"',
+            '—' | '–' => ',',
+            _ => c,
+        })
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn existing_preferences_gain_default_volume_and_invalid_gain_is_rejected() {
+        let prefs: SpeechPreferences =
+            serde_json::from_str(r#"{"voice":"bm_fable","speed":1.1}"#).unwrap();
+        assert_eq!(prefs.volume, 1.);
+        assert_eq!(prefs.voice, SpeechVoice::Fable);
+        for volume in [-1., 1.51, f32::NAN, f32::INFINITY] {
+            assert!(SpeechPreferences { volume, ..prefs }.validate().is_err());
+        }
+    }
 }

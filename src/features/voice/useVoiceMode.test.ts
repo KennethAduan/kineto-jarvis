@@ -52,7 +52,21 @@ function fixture() {
   return { api, assistant, voice, message, emit: (event: VoiceModeEvent) => receive(event) };
 }
 describe('hands-free voice conversation', () => {
-  it('starts only on request, sends the transcript, speaks the saved reply, then resumes listening', async () => {
+  it('shows real input levels and clears the meter while the microphone is paused', async () => {
+    const { api, assistant, voice, emit } = fixture();
+    const { result } = renderHook(() => useVoiceMode(api, voice, assistant, vi.fn()));
+    await act(() => result.current.start());
+    act(() => emit({ kind: 'input_level', level: 0.65 }));
+    expect(result.current.inputLevel).toBe(0.65);
+    act(() => emit({ kind: 'phase', phase: 'transcribing' }));
+    expect(result.current.inputLevel).toBe(0);
+    act(() => emit({ kind: 'input_level', level: Number.NaN }));
+    expect(result.current.inputLevel).toBe(0);
+    await act(() => result.current.stop());
+    act(() => emit({ kind: 'input_level', level: 0.9 }));
+    expect(result.current.inputLevel).toBe(0);
+  });
+  it('starts only on request, sends the transcript and resumes after native speech finishes without replaying the answer', async () => {
     const { api, assistant, voice, emit } = fixture();
     const { result } = renderHook(() => useVoiceMode(api, voice, assistant, vi.fn()));
     expect(api.start).not.toHaveBeenCalled();
@@ -60,9 +74,9 @@ describe('hands-free voice conversation', () => {
     expect(result.current.enabled).toBe(true);
     expect(assistant.send).not.toHaveBeenCalled();
     act(() => emit({ kind: 'transcript', text: 'What is two plus two?' }));
-    await waitFor(() => expect(voice.speak).toHaveBeenCalledWith('chat', 'reply'));
-    expect(assistant.send).toHaveBeenCalledWith('What is two plus two?');
+    await waitFor(() => expect(assistant.send).toHaveBeenCalledWith('What is two plus two?'));
     await waitFor(() => expect(api.resume).toHaveBeenCalledWith('session'));
+    expect(voice.speak).not.toHaveBeenCalled();
     await act(() => result.current.stop());
     expect(result.current.enabled).toBe(false);
   });

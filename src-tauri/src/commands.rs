@@ -87,14 +87,22 @@ pub(crate) async fn send_message(
     model: String,
     on_event: Channel<StreamEvent>,
 ) -> Result<SendResult, String> {
-    execute_send(
-        &state.assistant,
-        conversation_id,
-        content,
-        model,
-        &ChannelSink(on_event),
-    )
-    .await
+    let channel = ChannelSink(on_event);
+    let speaking = state.voice_mode.reply_token()?.map(|token| {
+        crate::application::live_speech::SpeakingSink::new(&channel, state.speech.clone(), token)
+    });
+    let sink: &dyn EventSink = speaking
+        .as_ref()
+        .map_or(&channel as &dyn EventSink, |sink| sink);
+    let result = execute_send(&state.assistant, conversation_id, content, model, sink).await;
+    if let Some(speaking) = speaking {
+        speaking.finish(
+            result
+                .as_ref()
+                .is_ok_and(|reply| reply.error.is_none() && reply.message.status == "complete"),
+        )?;
+    }
+    result
 }
 
 pub(crate) struct DesktopState {

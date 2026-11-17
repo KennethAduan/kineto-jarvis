@@ -16,6 +16,7 @@ export function useVoiceMode(
   const [lastUser, setLastUser] = useState('');
   const [lastReply, setLastReply] = useState('');
   const [starting, setStarting] = useState(false);
+  const [inputLevel, setInputLevel] = useState(0);
   const epoch = useRef(0),
     session = useRef<string | null>(null),
     conversation = useRef<string | null>(null),
@@ -31,6 +32,7 @@ export function useVoiceMode(
       setEnabled(false);
       setStarting(false);
       setPhase('off');
+      setInputLevel(0);
     }
     await api.stop().catch((error) => {
       if (alive.current) setError(errorText(error));
@@ -52,6 +54,16 @@ export function useVoiceMode(
     )
       void stop();
   }, [assistant.selected, assistant.page, enabled, stop]);
+  useEffect(() => {
+    const reply = assistant.messages?.at(-1);
+    if (
+      enabled &&
+      operation.current &&
+      reply?.role === 'assistant' &&
+      reply.conversation_id === conversation.current
+    )
+      setLastReply(reply.content);
+  }, [assistant.messages, enabled]);
   useEffect(() => {
     if (!enabled) return;
     let pending = false;
@@ -95,6 +107,21 @@ export function useVoiceMode(
     setLastUser(text);
     setLastReply('');
     setPhase('thinking');
+    // The native reply pipeline owns its speech queue; poll only for UI feedback.
+    let polling = false;
+    const playback = window.setInterval(() => {
+      if (polling || token !== epoch.current) return;
+      polling = true;
+      void voice
+        .status()
+        .then((status) => {
+          if (token === epoch.current && status.speaking) setPhase('speaking');
+        })
+        .catch(() => {})
+        .finally(() => {
+          polling = false;
+        });
+    }, 200);
     try {
       const message = await latest.current.assistant.send(text);
       if (token !== epoch.current) return;
@@ -102,7 +129,6 @@ export function useVoiceMode(
         throw new Error('JARVIS could not complete the reply. Check the local model connection.');
       setLastReply(message.content);
       setPhase('speaking');
-      await voice.speak(message.conversation_id, message.id);
       while (token === epoch.current) {
         const status = await voice.status();
         if (status.playback_error) throw new Error(status.playback_error);
@@ -118,6 +144,7 @@ export function useVoiceMode(
         await stop();
       }
     } finally {
+      window.clearInterval(playback);
       if (token === epoch.current) operation.current = false;
     }
   }
@@ -140,7 +167,10 @@ export function useVoiceMode(
       const receive = (event: VoiceModeEvent) => {
         if (token !== epoch.current || !alive.current) return;
         if (event.kind === 'phase') {
+          if (event.phase !== 'waiting' && event.phase !== 'listening') setInputLevel(0);
           if (event.phase !== 'paused') setPhase(event.phase);
+        } else if (event.kind === 'input_level') {
+          setInputLevel(Number.isFinite(event.level) ? Math.max(0, Math.min(1, event.level)) : 0);
         } else if (event.kind === 'transcript') void answer(event.text, token);
         else if (event.kind === 'error') {
           setError(event.message);
@@ -150,6 +180,7 @@ export function useVoiceMode(
           session.current = null;
           setEnabled(false);
           setPhase('off');
+          setInputLevel(0);
         }
       };
       const sessionId = await api.start(receive);
@@ -169,6 +200,17 @@ export function useVoiceMode(
       if (alive.current) setStarting(false);
     }
   }
-  return { enabled, starting, phase, error, setError, lastUser, lastReply, start, stop };
+  return {
+    enabled,
+    starting,
+    phase,
+    inputLevel,
+    error,
+    setError,
+    lastUser,
+    lastReply,
+    start,
+    stop,
+  };
 }
 export type VoiceModeController = ReturnType<typeof useVoiceMode>;

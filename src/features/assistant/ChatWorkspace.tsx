@@ -251,7 +251,7 @@ export function ChatWorkspace({
         <MessageScrollerButton aria-label="Latest message" className="chat-scroll-button" />
       </MessageScroller>
       <div className="composer-wrap">
-        <VoiceActivity voice={voice} />
+        <VoiceActivity voice={voice} modeError={voiceMode.error} />
         <AnimatePresence initial={false}>
           {busy && <GenerationStatus key="generation" thinking={thinking} />}
         </AnimatePresence>

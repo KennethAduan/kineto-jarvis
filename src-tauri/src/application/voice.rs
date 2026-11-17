@@ -176,15 +176,15 @@ pub fn prepare_speech(markdown: &str) -> String {
             Event::Text(text) | Event::Code(text) if !code_block => result.push_str(&text),
             Event::SoftBreak | Event::HardBreak => result.push(' '),
             Event::End(TagEnd::Paragraph | TagEnd::Heading(_) | TagEnd::Item) => {
-                result.push_str(". ")
+                if !result.trim_end().ends_with(['.', '?', '!']) {
+                    result.push('.');
+                }
+                result.push(' ');
             }
             _ => {}
         }
     }
-    result
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ")
+    crate::domain::speech::spoken_text(&result)
         .chars()
         .take(8_000)
         .collect()

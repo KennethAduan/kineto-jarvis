@@ -22,7 +22,7 @@ async function fixture(page: Page, answer?: string, kokoroReady = true) {
         models:async()=>[{id:'qwen-fixture'}], messages:async()=>messages, activity:async()=>[],
         search:async(query)=>(conversation.title+' '+messages.map(message=>message.content).join(' ')).toLowerCase().includes(query.toLowerCase()) ? [conversation] : [],
         create:async()=>conversation, delete:async()=>{}, cancel:async()=>{},
-        send:async(id,content,model,onEvent)=>{globalThis.__sentVoiceText=content;onEvent({kind:'started',message:{id:'pending',conversation_id:id,role:'assistant',content:'',status:'streaming',created_at:1}});onEvent({kind:'thinking'});globalThis.__emitChatDelta=(text)=>onEvent({kind:'delta',text});return await new Promise(resolve=>{globalThis.__completeChat=()=>resolve({message:{id:'pending',conversation_id:id,role:'assistant',content:'Two plus two is four.',status:'complete',created_at:1},error:null})});}
+        send:async(id,content,model,onEvent)=>{globalThis.__sentVoiceText=content;onEvent({kind:'started',message:{id:'pending',conversation_id:id,role:'assistant',content:'',status:'streaming',created_at:1}});onEvent({kind:'thinking'});globalThis.__emitChatDelta=(text)=>{onEvent({kind:'delta',text});if(globalThis.__voiceEnabled)globalThis.__startNativeSpeech?.()};return await new Promise(resolve=>{globalThis.__completeChat=()=>resolve({message:{id:'pending',conversation_id:id,role:'assistant',content:'Two plus two is four.',status:'complete',created_at:1},error:null})});}
       };
     `,
     }),
@@ -32,6 +32,7 @@ async function fixture(page: Page, answer?: string, kokoroReady = true) {
       contentType: 'application/javascript',
       body: `
       let stage='idle', speaking=false;
+      globalThis.__startNativeSpeech=()=>{speaking=true;globalThis.__spokenReplyCount=(globalThis.__spokenReplyCount??0)+1;globalThis.__finishVoiceReply=()=>{speaking=false}};
       export const voiceApi = {
         status:async()=>({stage,model:{ready:true,bytes:147951465},downloaded_bytes:0,recording:{active:stage==='recording',seconds:1},speaking}),
         start:async()=>{stage='recording'},
@@ -46,7 +47,7 @@ async function fixture(page: Page, answer?: string, kokoroReady = true) {
     route.fulfill({
       contentType: 'application/javascript',
       body: `
-      let preferences = {voice:'bm_george',speed:0.95}, phase='idle', rejectDownload;
+      let preferences = {voice:'bm_george',speed:0.95,volume:1}, phase='idle', rejectDownload;
       export const speechApi = {
         status:async()=>({preferences,phase,model:{ready:${kokoroReady},bytes:148782633},downloaded_bytes:phase==='downloading'?50000000:0,error:null}),
         save:async(value)=>{preferences={...value}},
@@ -63,9 +64,9 @@ async function fixture(page: Page, answer?: string, kokoroReady = true) {
       body: `let enabled=false,phase='off',emit;
       export const voiceModeApi={
         status:async()=>({enabled,phase,model:{ready:true,bytes:6682588},downloaded_bytes:0,error:null}),download:async()=>{},
-        start:async(callback)=>{enabled=true;phase='waiting';emit=callback;globalThis.__emitVoiceMode=callback;callback({kind:'phase',phase});return 'session'},
+        start:async(callback)=>{enabled=true;globalThis.__voiceEnabled=true;phase='waiting';emit=callback;globalThis.__emitVoiceMode=callback;callback({kind:'phase',phase});return 'session'},
         heartbeat:async()=>{},resume:async()=>{globalThis.__voiceResumeCount=(globalThis.__voiceResumeCount??0)+1;phase='listening';emit({kind:'phase',phase})},
-        stop:async()=>{enabled=false;phase='off';globalThis.__finishVoiceReply?.()}
+        stop:async()=>{enabled=false;globalThis.__voiceEnabled=false;phase='off';globalThis.__finishVoiceReply?.()}
       };`,
     }),
   );
@@ -102,6 +103,16 @@ test('voice mode turns a spoken request into a spoken reply and resumes listenin
   await page.getByRole('button', { name: 'Voice mode', exact: true }).click();
   await expect(page.getByRole('region', { name: 'Voice conversation' })).toBeVisible();
   await expect(page.getByText('Say “Hey Jarvis”', { exact: true })).toBeVisible();
+  const meter = page.getByRole('meter', { name: 'Microphone input level' });
+  await expect(meter).toHaveAttribute('aria-valuenow', '0');
+  await page.evaluate(() => {
+    (window as Window & { __emitVoiceMode: (event: unknown) => void }).__emitVoiceMode({
+      kind: 'input_level',
+      level: 0.7,
+    });
+  });
+  await expect(meter).toHaveAttribute('aria-valuenow', '70');
+  await expect(page.getByText('Audio detected · microphone is receiving sound')).toBeVisible();
   await page.evaluate(() => {
     (window as Window & { __emitVoiceMode: (event: unknown) => void }).__emitVoiceMode({
       kind: 'phase',
@@ -119,6 +130,18 @@ test('voice mode turns a spoken request into a spoken reply and resumes listenin
   expect(
     await page.evaluate(() => (window as Window & { __sentVoiceText: string }).__sentVoiceText),
   ).toBe('What is two plus two?');
+  await page.evaluate(() =>
+    (window as Window & { __emitChatDelta: (text: string) => void }).__emitChatDelta(
+      'Two plus two is four. ',
+    ),
+  );
+  // Native speech starts while send_message is still waiting for the rest of the model stream.
+  await expect(page.getByText('JARVIS is speaking', { exact: true })).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => (window as Window & { __voiceResumeCount?: number }).__voiceResumeCount ?? 0,
+    ),
+  ).toBe(0);
   await page.evaluate(() => (window as Window & { __completeChat: () => void }).__completeChat());
   await expect(page.getByText('JARVIS is speaking', { exact: true })).toBeVisible();
   await expect(page.getByText('Two plus two is four.', { exact: true })).toBeVisible();
@@ -148,17 +171,25 @@ test('British voice preview is independent of saved reply preferences', async ({
   await speed.focus();
   await page.keyboard.press('ArrowRight');
   await expect(speed).toHaveAttribute('aria-valuenow', '1');
+  const volume = page.getByRole('slider', { name: 'Output volume' });
+  await volume.focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(volume).toHaveAttribute('aria-valuenow', '1.05');
   await page.getByRole('button', { name: 'Preview voice', exact: true }).click();
   await expect(page.getByText('Playing voice', { exact: true })).toBeVisible();
   expect(
     await page.evaluate(() => (window as Window & { __speechPreview: unknown }).__speechPreview),
-  ).toEqual({ voice: 'bm_fable', speed: 1 });
+  ).toEqual({ voice: 'bm_fable', speed: 1, volume: 1.05 });
   await page.getByRole('button', { name: 'Stop voice', exact: true }).click();
   await page.getByRole('button', { name: 'Save voice', exact: true }).click();
   await expect(page.getByText('Voice saved for future replies.')).toBeVisible();
   await page.getByRole('button', { name: 'Close', exact: true }).click();
   await page.getByRole('button', { name: 'Voice settings', exact: true }).click();
   await expect(page.getByRole('combobox', { name: 'Voice', exact: true })).toContainText('Fable');
+  await expect(page.getByRole('slider', { name: 'Output volume' })).toHaveAttribute(
+    'aria-valuenow',
+    '1.05',
+  );
   await expect(page.getByRole('slider', { name: 'Speaking speed' })).toHaveAttribute(
     'aria-valuenow',
     '1',

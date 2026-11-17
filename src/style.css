@@ -1774,3 +1774,24 @@ h1 {
     scroll-behavior: auto !important;
   }
 }
+
+.voice-input-meter {
+  width: min(320px, 100%);
+  display: grid;
+  gap: 10px;
+  text-align: center;
+}
+.voice-input-meter [role='meter'] {
+  height: 8px;
+  border-radius: 99px;
+  overflow: hidden;
+  background: var(--border);
+}
+.voice-input-meter [role='meter'] span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+.voice-input-meter small {
+  color: var(--muted);
+}
