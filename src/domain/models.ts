@@ -35,7 +35,10 @@ export interface Model {
   id: string;
 }
 export type StreamEvent =
-  { kind: 'started'; message: Message } | { kind: 'delta'; text: string } | { kind: 'thinking' };
+  | { kind: 'started'; message: Message }
+  | { kind: 'delta'; text: string }
+  | { kind: 'thinking' }
+  | { kind: 'speech_warning'; message: string };
 export interface SendResult {
   message: Message;
   error: string | null;

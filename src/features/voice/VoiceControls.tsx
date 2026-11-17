@@ -200,7 +200,10 @@ export function VoiceSetup({
             </>
           )}
           {ready && <p className="voice-ready">Offline speech model ready.</p>}
-          <p>Listening only starts when you enable Voice mode or press the dictation microphone.</p>
+          <p>
+            Speech recognition currently defaults to English. Listening only starts when you enable
+            Voice mode or press the dictation microphone.
+          </p>
           {voice.error && (
             <p className="voice-error" role="alert">
               {voice.error}

@@ -22,6 +22,7 @@ export function useAssistant(api: AssistantGateway, desktop: boolean) {
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(false);
   const [thinking, setThinking] = useState(false);
+  const [speechWarning, setSpeechWarning] = useState('');
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const operation = useRef(false);
   const modelCheck = useRef(false);
@@ -127,6 +128,7 @@ export function useAssistant(api: AssistantGateway, desktop: boolean) {
     setBusy(true);
     setError('');
     setThinking(false);
+    setSpeechWarning('');
     let id = selected;
     let submitted = false;
     try {
@@ -160,6 +162,8 @@ export function useAssistant(api: AssistantGateway, desktop: boolean) {
               m.id === assistantId ? { ...m, content: m.content + event.text } : m,
             ),
           );
+        } else if (event.kind === 'speech_warning') {
+          setSpeechWarning(event.message);
         } else {
           setThinking(true);
         }
@@ -230,6 +234,7 @@ export function useAssistant(api: AssistantGateway, desktop: boolean) {
     busy,
     loading,
     thinking,
+    speechWarning,
     deleteId,
     setDeleteId,
     textarea,

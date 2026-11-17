@@ -11,6 +11,7 @@ struct Pending {
     markdown: String,
     spoken: usize,
     stream: Option<SpeechStream>,
+    disabled: bool,
 }
 pub struct SpeakingSink<'a> {
     downstream: &'a dyn EventSink,
@@ -32,8 +33,19 @@ impl<'a> SpeakingSink<'a> {
                 markdown: String::new(),
                 spoken: 0,
                 stream: None,
+                disabled: false,
             }),
         }
+    }
+    fn disable_speech(&self, pending: &mut Pending, message: String) -> Result<(), String> {
+        pending.disabled = true;
+        pending.markdown.clear();
+        if let Some(stream) = pending.stream.take() {
+            stream.abort();
+        }
+        self.speech.note_warning(message.clone());
+        // Speech is an optional consumer of answer deltas, never a chat transport failure.
+        self.downstream.send(StreamEvent::SpeechWarning { message })
     }
     fn enqueue(&self, pending: &mut Pending, markdown: &str) -> Result<(), String> {
         if pending.spoken >= 8_000 || self.cancel.is_cancelled() {
@@ -62,10 +74,13 @@ impl<'a> SpeakingSink<'a> {
     pub fn finish(&self, success: bool) -> Result<(), String> {
         let mut pending = self.pending.lock().map_err(|_| "Live speech unavailable")?;
         let tail = std::mem::take(&mut pending.markdown);
-        if success {
-            self.enqueue(&mut pending, &tail)?;
-        } else if pending.stream.is_some() {
-            self.speech.stop()?;
+        if success && !pending.disabled && !self.cancel.is_cancelled() {
+            if let Err(error) = self.enqueue(&mut pending, &tail) {
+                let error = self.speech.error().unwrap_or(error);
+                self.disable_speech(&mut pending, error)?;
+            }
+        } else if let Some(stream) = pending.stream.as_ref() {
+            stream.abort();
         }
         pending.stream.take(); // Close the queue; successful playback drains in order.
         Ok(())
@@ -80,18 +95,31 @@ impl EventSink for SpeakingSink<'_> {
         self.downstream.send(event)?;
         if let Some(text) = text {
             let mut pending = self.pending.lock().map_err(|_| "Live speech unavailable")?;
-            if self.cancel.is_cancelled() || pending.spoken >= 8_000 {
+            if self.cancel.is_cancelled() || pending.disabled || pending.spoken >= 8_000 {
                 return Ok(());
+            }
+            if pending.stream.is_some() {
+                if let Some(error) = self.speech.error() {
+                    return self.disable_speech(&mut pending, error);
+                }
             }
             pending.markdown.push_str(&text);
             if pending.markdown.len() > 32_768 {
-                return Err("Live speech segment exceeded its limit. Try a shorter answer.".into());
+                return self.disable_speech(
+                    &mut pending,
+                    "This answer is too complex for live speech. The text reply will continue."
+                        .into(),
+                );
             }
             while let Some(boundary) =
                 phrase_boundary(&pending.markdown, if pending.spoken == 0 { 32 } else { 72 })
             {
                 let sentence: String = pending.markdown.drain(..boundary).collect();
-                self.enqueue(&mut pending, &sentence)?;
+                if let Err(error) = self.enqueue(&mut pending, &sentence) {
+                    let error = self.speech.error().unwrap_or(error);
+                    self.disable_speech(&mut pending, error)?;
+                    break;
+                }
             }
         }
         Ok(())

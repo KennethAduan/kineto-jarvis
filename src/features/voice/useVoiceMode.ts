@@ -29,6 +29,11 @@ export function useVoiceMode(
     alive = useRef(true);
   const latest = useRef({ assistant, onSetup });
   latest.current = { assistant, onSetup };
+  useEffect(() => {
+    if (enabled && operation.current && assistant.speechWarning) {
+      setAudioNotice(`Voice unavailable: ${assistant.speechWarning} The text reply is continuing.`);
+    }
+  }, [enabled, assistant.speechWarning]);
   const stop = useCallback(async () => {
     epoch.current++;
     turn.current++;

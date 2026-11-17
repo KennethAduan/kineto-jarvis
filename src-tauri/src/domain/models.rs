@@ -33,6 +33,7 @@ pub struct Model {
 #[derive(Clone, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum StreamEvent {
+    SpeechWarning { message: String },
     Started { message: Message },
     Delta { text: String },
     Thinking,

@@ -57,6 +57,9 @@ pub struct SpeechStream {
     cancel: CancellationToken,
 }
 impl SpeechStream {
+    pub fn abort(&self) {
+        self.cancel.cancel();
+    }
     pub fn push(&self, text: String) -> Result<(), String> {
         if self.cancel.is_cancelled() {
             return Err("Voice reply stopped".into());
@@ -76,6 +79,11 @@ impl Drop for Job {
     }
 }
 impl SpeechService {
+    pub fn note_warning(&self, message: String) {
+        if let Ok(mut task) = self.0.task.lock() {
+            task.error.get_or_insert(message);
+        }
+    }
     pub fn new(
         synthesizer: Box<dyn SpeechSynthesizer>,
         player: Box<dyn AudioPlayback>,
@@ -602,6 +610,44 @@ mod tests {
             assert!(Instant::now() < deadline, "speech task did not settle");
             std::thread::sleep(Duration::from_millis(1));
         }
+    }
+    #[test]
+    fn synthesis_failure_does_not_abort_or_truncate_the_text_stream() {
+        use crate::{
+            application::live_speech::SpeakingSink,
+            domain::{models::StreamEvent, ports::EventSink},
+        };
+        #[derive(Default)]
+        struct Sink(Mutex<Vec<StreamEvent>>);
+        impl EventSink for Sink {
+            fn send(&self, event: StreamEvent) -> Result<(), String> {
+                self.0.lock().unwrap().push(event);
+                Ok(())
+            }
+        }
+        let (speech, _, _) = fixture(true, false, true);
+        let downstream = Sink::default();
+        let sink = SpeakingSink::new(&downstream, speech.clone(), CancellationToken::new());
+        sink.send(StreamEvent::Delta {
+            text: "The first sentence will trigger speech. ".into(),
+        })
+        .unwrap();
+        until(|| speech.error().is_some());
+        sink.send(StreamEvent::Delta {
+            text: "The rest of the answer must still arrive.".into(),
+        })
+        .unwrap();
+        sink.finish(true).unwrap();
+        let events = downstream.0.lock().unwrap();
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| matches!(event, StreamEvent::SpeechWarning { .. }))
+                .count(),
+            1
+        );
+        assert!(events.iter().any(|event| matches!(event, StreamEvent::Delta { text } if text.contains("rest of the answer"))));
+        assert_eq!(speech.error().as_deref(), Some("Synthesis failed"));
     }
     #[test]
     fn streamed_model_sentences_reach_speech_before_completion_without_replaying_or_reading_emoji()

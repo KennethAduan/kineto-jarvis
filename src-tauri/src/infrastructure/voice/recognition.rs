@@ -60,7 +60,9 @@ impl SpeechRecognizer for LocalWhisper {
         params.set_n_threads(
             std::thread::available_parallelism().map_or(2, |n| n.get().min(4)) as i32,
         );
-        params.set_language(None);
+        // The current assistant voice is English; auto-detection can turn short/noisy clips
+        // into confident hallucinated foreign-language transcripts.
+        params.set_language(Some("en"));
         params.set_translate(false);
         params.set_no_context(true);
         params.set_no_timestamps(true);

@@ -35,9 +35,26 @@ async fn local_model_uses_private_profile_and_jarvis_identity() {
         )
         .unwrap();
     let expected = profile.display_name.to_lowercase();
-    let store = Store::open(std::path::Path::new(":memory:")).unwrap();
+    let mut store = Store::open(std::path::Path::new(":memory:")).unwrap();
     store.save_profile(&profile).unwrap();
     let conversation = store.create().unwrap();
+    let previous = store
+        .begin(
+            &conversation.id,
+            "おはようございます",
+            "qwen/qwen3-4b-2507",
+            "old-language-turn",
+        )
+        .unwrap();
+    store
+        .finish(
+            &previous,
+            "old-language-turn",
+            "おはようございます",
+            "failed",
+            "Synthetic prior speech failure",
+        )
+        .unwrap();
     let service =
         AssistantService::new(Box::new(store), Box::new(LmStudioGateway::local().unwrap()));
     let reply = execute_send(
@@ -50,6 +67,14 @@ async fn local_model_uses_private_profile_and_jarvis_identity() {
     .await
     .unwrap();
     assert!(reply.error.is_none());
+    assert!(
+        !reply
+            .message
+            .content
+            .chars()
+            .any(|c| ('\u{3040}'..='\u{30ff}').contains(&c)),
+        "English should remain the default despite earlier Japanese context"
+    );
     assert!(
         reply.message.content.to_lowercase().contains(&expected),
         "model must use the stored full name"
@@ -180,6 +205,7 @@ async fn real_http_stream_saves_history_and_activity() {
     assert_eq!(body["messages"][1]["content"], "Hello");
     let system = body["messages"][0]["content"].as_str().unwrap();
     assert!(system.contains("Your name is JARVIS"));
+    assert!(system.contains("Reply in English by default"));
     assert!(system.contains("Avery Example"));
     assert!(system.contains("Full-stack engineer"));
     assert!(
