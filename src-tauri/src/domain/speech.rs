@@ -47,7 +47,7 @@ fn default_volume() -> f32 {
 impl Default for SpeechPreferences {
     fn default() -> Self {
         Self {
-            voice: SpeechVoice::Supertonic2,
+            voice: SpeechVoice::George,
             speed: 1.15,
             volume: default_volume(),
         }

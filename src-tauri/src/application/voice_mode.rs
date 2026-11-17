@@ -233,6 +233,7 @@ fn run(inner: &Inner, sink: &dyn VoiceModeSink, cancel: CancellationToken) -> Re
     let mut listening = false;
     let mut started = Instant::now();
     let mut meter_updated = Instant::now() - Duration::from_secs(1);
+    let mut recovery_quiet = None;
     phase(inner, sink, VoiceModePhase::Waiting)?;
     while live(inner, &cancel) {
         let paused = inner
@@ -265,11 +266,37 @@ fn run(inner: &Inner, sink: &dyn VoiceModeSink, cancel: CancellationToken) -> Re
         let Some(frame) = frame else {
             continue;
         };
+        if microphone
+            .as_ref()
+            .is_some_and(|input| input.take_discontinuity())
+        {
+            // Never join words across dropped audio or feed stale state to wake/VAD models.
+            wake.reset();
+            turn.reset();
+            started = Instant::now();
+            recovery_quiet = Some(0_usize);
+            sink.emit(VoiceModeEvent::AudioReset)?;
+        }
         if meter_updated.elapsed() >= Duration::from_millis(100) {
             sink.emit(VoiceModeEvent::InputLevel {
                 level: input_level(&frame),
             })?;
             meter_updated = Instant::now();
+        }
+        if let Some(quiet) = recovery_quiet.as_mut() {
+            // Wait for a clean turn boundary rather than transcribing the tail of dropped speech.
+            let _ = turn.feed(&frame);
+            if turn.detected() {
+                *quiet = 0;
+            } else {
+                *quiet += frame.len();
+            }
+            if *quiet >= 4_000 {
+                recovery_quiet = None;
+                turn.reset();
+                wake.reset();
+            }
+            continue;
         }
         if paused && !listening {
             // Echo-cleaned input stays open during replies, solely for user interruption.

@@ -168,7 +168,10 @@ mod tests {
         let audio = engine
             .synthesize(
                 "I am Jarvis. Ultron is a fictional character. How can I help you?",
-                SpeechPreferences::default(),
+                SpeechPreferences {
+                    voice: SpeechVoice::Supertonic2,
+                    ..Default::default()
+                },
                 CancellationToken::new(),
             )
             .unwrap();

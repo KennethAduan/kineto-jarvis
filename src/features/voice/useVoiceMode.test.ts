@@ -52,6 +52,17 @@ function fixture() {
   return { api, assistant, voice, message, emit: (event: VoiceModeEvent) => receive(event) };
 }
 describe('hands-free voice conversation', () => {
+  it('shows a recoverable audio pause without ending voice mode', async () => {
+    const { api, assistant, voice, emit } = fixture();
+    const { result } = renderHook(() => useVoiceMode(api, voice, assistant, vi.fn()));
+    await act(() => result.current.start());
+    act(() => emit({ kind: 'audio_reset' }));
+    expect(result.current.enabled).toBe(true);
+    expect(result.current.error).toBe('');
+    expect(result.current.audioNotice).toContain('repeat');
+    await act(() => result.current.stop());
+    expect(result.current.audioNotice).toBe('');
+  });
   it('keeps the session and waits for cancellation before sending an interrupted follow-up', async () => {
     const { api, assistant, voice, message, emit } = fixture();
     let finish!: (value: Message | null) => void;

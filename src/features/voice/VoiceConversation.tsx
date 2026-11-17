@@ -106,6 +106,11 @@ export function VoiceConversation({ mode }: { mode: VoiceModeController }) {
           sequence={mode.inputSequence}
           active={mode.micActive}
         />
+        {mode.audioNotice && (
+          <p className="audio-recovery-notice" role="status">
+            {mode.audioNotice}
+          </p>
+        )}
         <div className="audio-signal-chain" aria-label="Conversation stages">
           <div data-active={mode.micActive}>
             <Mic size={15} />

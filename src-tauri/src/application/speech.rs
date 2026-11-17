@@ -86,7 +86,7 @@ impl SpeechService {
     ) -> Result<Self, String> {
         let (preferences, error) = match store.load().and_then(|preferences| { preferences.validate()?; Ok(preferences) }) {
             Ok(preferences) => (preferences, None),
-            Err(_) => (SpeechPreferences::default(), Some("Saved voice preferences could not be read. Using Supertonic until you save a new preference.".into())),
+            Err(_) => (SpeechPreferences::default(), Some("Saved voice preferences could not be read. Using George until you save a new preference.".into())),
         };
         Ok(Self(Arc::new(Inner {
             synthesizer,
@@ -675,7 +675,7 @@ mod tests {
         speech.preview(preview).unwrap();
         until(|| speech.status().unwrap().phase == SpeechPhase::Idle);
         assert_eq!(seen.0.lock().unwrap()[0], preview);
-        assert_eq!(store.lock().unwrap().voice, SpeechVoice::Supertonic2);
+        assert_eq!(store.lock().unwrap().voice, SpeechVoice::George);
         let saved = SpeechPreferences {
             voice: SpeechVoice::Daniel,
             speed: 1.2,

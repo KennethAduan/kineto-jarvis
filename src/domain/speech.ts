@@ -30,11 +30,11 @@ export interface SpeechGateway {
   stop(): Promise<void>;
 }
 export const speechVoices: { id: SpeechVoice; label: string }[] = [
-  { id: 'supertonic_m2', label: 'Supertonic 3 · Male 2 (recommended)' },
-  { id: 'supertonic_m1', label: 'Supertonic 3 · Male 1' },
-  { id: 'bm_george', label: 'George · British male' },
+  { id: 'bm_george', label: 'George · British assistant (default)' },
   { id: 'bm_fable', label: 'Fable · British male' },
   { id: 'bm_daniel', label: 'Daniel · British male' },
   { id: 'bm_lewis', label: 'Lewis · British male' },
+  { id: 'supertonic_m2', label: 'Supertonic 3 · Male 2' },
+  { id: 'supertonic_m1', label: 'Supertonic 3 · Male 1' },
   { id: 'system', label: 'System default voice' },
 ];

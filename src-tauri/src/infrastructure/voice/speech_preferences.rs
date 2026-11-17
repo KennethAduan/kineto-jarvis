@@ -42,7 +42,7 @@ mod tests {
         let path = directory.path().join("preferences.json");
         assert_eq!(
             JsonSpeechPreferences(path.clone()).load().unwrap().voice,
-            SpeechVoice::Supertonic2
+            SpeechVoice::George
         );
         let preferences = SpeechPreferences {
             voice: SpeechVoice::Fable,

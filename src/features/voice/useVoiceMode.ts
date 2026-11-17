@@ -13,6 +13,7 @@ export function useVoiceMode(
   const [enabled, setEnabled] = useState(false);
   const [phase, setPhase] = useState('off');
   const [error, setError] = useState('');
+  const [audioNotice, setAudioNotice] = useState('');
   const [lastUser, setLastUser] = useState('');
   const [lastReply, setLastReply] = useState('');
   const [starting, setStarting] = useState(false);
@@ -39,6 +40,7 @@ export function useVoiceMode(
       setStarting(false);
       setPhase('off');
       setInputLevel(0);
+      setAudioNotice('');
       setMicActive(false);
     }
     await api.stop().catch((error) => {
@@ -119,6 +121,7 @@ export function useVoiceMode(
     const turnId = ++turn.current;
     const current = () => token === epoch.current && turnId === turn.current;
     setLastUser(text);
+    setAudioNotice('');
     setLastReply('');
     setPhase('thinking');
     // The native reply pipeline owns its speech queue; poll only for UI feedback.
@@ -200,6 +203,10 @@ export function useVoiceMode(
         } else if (event.kind === 'input_level') {
           setInputSequence((sequence) => sequence + 1);
           setInputLevel(Number.isFinite(event.level) ? Math.max(0, Math.min(1, event.level)) : 0);
+        } else if (event.kind === 'audio_reset') {
+          setAudioNotice(
+            'Microphone recovered after an audio pause. Please repeat your last sentence.',
+          );
         } else if (event.kind === 'interrupted') {
           turn.current++;
           setPhase('listening');
@@ -243,6 +250,7 @@ export function useVoiceMode(
     inputSequence,
     micActive,
     error,
+    audioNotice,
     setError,
     lastUser,
     lastReply,

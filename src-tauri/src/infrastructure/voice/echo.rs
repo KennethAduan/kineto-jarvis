@@ -65,6 +65,10 @@ pub struct CaptureEcho {
     pending: VecDeque<f32>,
 }
 impl CaptureEcho {
+    pub fn reset(&mut self) -> Result<(), String> {
+        *self = Self::new(self.reference.clone())?;
+        Ok(())
+    }
     pub fn new(reference: Arc<RenderReference>) -> Result<Self, String> {
         let apm = std::panic::catch_unwind(|| {
             AudioProcessing::builder()

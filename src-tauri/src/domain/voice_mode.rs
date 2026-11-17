@@ -25,6 +25,7 @@ pub struct VoiceModeStatus {
 #[derive(Clone, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum VoiceModeEvent {
+    AudioReset,
     Interrupted,
     InputLevel { level: f32 },
     Phase { phase: VoiceModePhase },
@@ -40,6 +41,9 @@ pub trait ReplyCancellation: Send + Sync {
 }
 pub trait InputFrames: Send {
     fn next(&self, timeout: Duration) -> Result<Option<Vec<f32>>, String>;
+    fn take_discontinuity(&self) -> bool {
+        false
+    }
 }
 pub trait VoiceInput: Send + Sync {
     fn open(&self) -> Result<Box<dyn InputFrames>, String>;

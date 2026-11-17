@@ -29,7 +29,7 @@ export function SpeechSettings({
 }) {
   const speech = useSpeech(api, desktop);
   const [preferences, setPreferences] = useState<SpeechPreferences>({
-    voice: 'supertonic_m2',
+    voice: 'bm_george',
     speed: 1.15,
     volume: 1,
   });
@@ -60,7 +60,7 @@ export function SpeechSettings({
         <h3 id="speech-heading">Spoken replies</h3>
       </div>
       <p>
-        Supertonic 3 is the new conversational voice. Kokoro British voices remain available. Speech
+        George is the default British assistant voice. Supertonic remains an alternative. Speech
         runs on this device.
       </p>
       <div className="speech-field">

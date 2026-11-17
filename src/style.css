@@ -2069,3 +2069,10 @@ h1 {
   align-self: flex-end;
   margin-top: -8px;
 }
+
+.audio-recovery-notice {
+  color: #e4cf85;
+  font-size: 12px;
+  line-height: 1.6;
+  margin: 12px 0 0;
+}
