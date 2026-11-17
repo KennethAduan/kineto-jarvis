@@ -164,6 +164,12 @@ pub fn prepare_audio(audio: CapturedAudio) -> Result<Vec<f32>, String> {
 }
 
 pub fn prepare_speech(markdown: &str) -> String {
+    readable_markdown(markdown, true)
+}
+pub fn prepare_speech_fragment(markdown: &str) -> String {
+    readable_markdown(markdown, false)
+}
+fn readable_markdown(markdown: &str, complete: bool) -> String {
     let mut result = String::new();
     let mut code_block = false;
     for event in Parser::new(markdown) {
@@ -176,7 +182,7 @@ pub fn prepare_speech(markdown: &str) -> String {
             Event::Text(text) | Event::Code(text) if !code_block => result.push_str(&text),
             Event::SoftBreak | Event::HardBreak => result.push(' '),
             Event::End(TagEnd::Paragraph | TagEnd::Heading(_) | TagEnd::Item) => {
-                if !result.trim_end().ends_with(['.', '?', '!']) {
+                if complete && !result.trim_end().ends_with(['.', '?', '!']) {
                     result.push('.');
                 }
                 result.push(' ');

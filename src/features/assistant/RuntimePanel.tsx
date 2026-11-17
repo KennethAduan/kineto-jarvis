@@ -61,7 +61,7 @@ export function RuntimePanel({
         ))}
       </select>
       <div className="model-note">
-        Preferred: Qwen3.5-9B
+        Preferred: qwen/qwen3-4b-2507
         <br />
         Uses the exact model ID from LM Studio.
       </div>

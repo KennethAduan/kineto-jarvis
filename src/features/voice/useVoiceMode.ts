@@ -60,6 +60,7 @@ export function useVoiceMode(
       enabled &&
       operation.current &&
       reply?.role === 'assistant' &&
+      reply.status === 'streaming' &&
       reply.conversation_id === conversation.current
     )
       setLastReply(reply.content);

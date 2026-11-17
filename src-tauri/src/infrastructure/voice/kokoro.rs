@@ -176,5 +176,16 @@ mod tests {
             writer.finalize().unwrap();
         }
         assert!(lengths[2] < lengths[0], "speed must change audio duration");
+        let fragment = engine
+            .synthesize(
+                "I can help you plan the rest of",
+                SpeechPreferences::default(),
+                CancellationToken::new(),
+            )
+            .unwrap();
+        assert!(
+            fragment.samples.len() > 2_400,
+            "unpunctuated streaming phrases must synthesize"
+        );
     }
 }

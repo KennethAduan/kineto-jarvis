@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { AssistantGateway } from '../../domain/ports';
 import type { Activity, Bootstrap, Conversation, Message, Model } from '../../domain/models';
-import { preferredModel } from '../../domain/preferred-model';
+import { DEFAULT_MODEL, preferredModel } from '../../domain/preferred-model';
 import { errorText } from '../../lib/errors';
 import { useConversationSearch } from './useConversationSearch';
 type Page = 'chat' | 'activity' | 'permissions';
@@ -43,7 +43,7 @@ export function useAssistant(api: AssistantGateway, desktop: boolean) {
       );
       setConnection('online');
       if (!found.length)
-        setConnectionError('Server connected. Load Qwen3.5-9B in LM Studio, then refresh.');
+        setConnectionError(`Server connected. Load ${DEFAULT_MODEL} in LM Studio, then refresh.`);
     } catch (e) {
       setConnection('offline');
       setModels([]);

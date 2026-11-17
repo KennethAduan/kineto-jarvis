@@ -52,6 +52,19 @@ function fixture() {
   return { api, assistant, voice, message, emit: (event: VoiceModeEvent) => receive(event) };
 }
 describe('hands-free voice conversation', () => {
+  it('keeps the current spoken reply when history refresh supplies an older completed message', async () => {
+    const { api, assistant, voice, message, emit } = fixture();
+    const status = await voice.status();
+    vi.mocked(voice.status).mockResolvedValue({ ...status, speaking: true });
+    const { result, rerender } = renderHook(() => useVoiceMode(api, voice, assistant, vi.fn()));
+    await act(() => result.current.start());
+    act(() => emit({ kind: 'transcript', text: 'What is two plus two?' }));
+    await waitFor(() => expect(result.current.lastReply).toBe('Four.'));
+    assistant.messages = [{ ...message, id: 'older', content: 'An older completed reply.' }];
+    rerender();
+    expect(result.current.lastReply).toBe('Four.');
+    await act(() => result.current.stop());
+  });
   it('shows real input levels and clears the meter while the microphone is paused', async () => {
     const { api, assistant, voice, emit } = fixture();
     const { result } = renderHook(() => useVoiceMode(api, voice, assistant, vi.fn()));

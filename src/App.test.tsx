@@ -71,9 +71,13 @@ beforeEach(() => {
 afterEach(cleanup);
 describe('assistant workflow', () => {
   it('selects Qwen from discovery rather than hard-coding the request model', () => {
-    expect(
-      preferredModel([{ id: 'other' }, { id: 'lmstudio-community/Qwen3.5-9B-GGUF' }]),
-    ).toContain('Qwen');
+    expect(preferredModel([{ id: 'qwen/qwen3.5-9b' }, { id: 'qwen/qwen3-4b-2507' }])).toBe(
+      'qwen/qwen3-4b-2507',
+    );
+    expect(preferredModel([{ id: 'community/Qwen3-4B-2507-GGUF' }])).toBe(
+      'community/Qwen3-4B-2507-GGUF',
+    );
+    expect(preferredModel([{ id: 'other' }])).toBe('other');
     expect(preferredModel([])).toBe('');
   });
   it('streams a response, stops generation, and reloads durable history', async () => {
