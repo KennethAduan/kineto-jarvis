@@ -34,6 +34,8 @@ import { lazy, Suspense } from 'react';
 const MessageContent = lazy(() => import('./MessageContent'));
 import { VoiceActivity, VoiceMicButton, VoiceSettingsButton } from '@/features/voice/VoiceControls';
 import type { VoiceController } from '@/features/voice/useVoice';
+import type { VoiceModeController } from '@/features/voice/useVoiceMode';
+import { VoiceConversation, VoiceModeButton } from '@/features/voice/VoiceConversation';
 const suggestions = [
   'Help me plan my day',
   'Explain a complex idea simply',
@@ -43,10 +45,12 @@ export function ChatWorkspace({
   assistant,
   desktop,
   voice,
+  voiceMode,
 }: {
   assistant: AssistantController;
   desktop: boolean;
   voice: VoiceController;
+  voiceMode: VoiceModeController;
 }) {
   const {
     boot,
@@ -65,6 +69,7 @@ export function ChatWorkspace({
     cancel,
     checkConnection,
   } = assistant;
+  if (voiceMode.enabled) return <VoiceConversation mode={voiceMode} />;
   return (
     <MessageScrollerProvider key={selected ?? 'new'} autoScroll defaultScrollPosition="end">
       <div className="chat-heading">
@@ -72,9 +77,23 @@ export function ChatWorkspace({
           <div className="eyebrow">INTELLIGENCE WORKSPACE</div>
           <h1>{selected ? title : 'Meet your next thought.'}</h1>
         </div>
-        <Badge variant="outline" className="mode-badge">
-          <ShieldCheck aria-hidden="true" size={14} /> Chat only
-        </Badge>
+        <div className="chat-mode-controls">
+          <VoiceModeButton
+            mode={voiceMode}
+            disabled={
+              !desktop ||
+              busy ||
+              loading ||
+              voice.dictating ||
+              connection !== 'online' ||
+              !model ||
+              !boot
+            }
+          />
+          <Badge variant="outline" className="mode-badge">
+            <ShieldCheck aria-hidden="true" size={14} /> Chat only
+          </Badge>
+        </div>
       </div>
       <MessageScroller className="chat-scroll">
         <MessageScrollerViewport aria-label="Conversation messages">

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-speech-download-model"
+description = "Enables the speech_download_model command without any pre-configured scope."
+commands.allow = ["speech_download_model"]
+
+[[permission]]
+identifier = "deny-speech-download-model"
+description = "Denies the speech_download_model command without any pre-configured scope."
+commands.deny = ["speech_download_model"]

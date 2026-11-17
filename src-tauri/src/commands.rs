@@ -11,6 +11,10 @@ use serde::Serialize;
 use tauri::{ipc::Channel, State};
 mod voice;
 pub(crate) use voice::*;
+mod speech;
+pub(crate) use speech::*;
+mod voice_mode;
+pub(crate) use voice_mode::*;
 #[derive(Serialize)]
 pub(crate) struct Bootstrap {
     conversations: Vec<Conversation>,
@@ -98,4 +102,7 @@ pub(crate) struct DesktopState {
     pub platform: PlatformInfo,
     pub endpoint: &'static str,
     pub voice: std::sync::Arc<crate::application::voice::VoiceService>,
+    pub speech: crate::application::speech::SpeechService,
+    pub voice_mode: crate::application::voice_mode::VoiceModeService,
+    pub audio_gate: std::sync::Arc<std::sync::Mutex<()>>,
 }

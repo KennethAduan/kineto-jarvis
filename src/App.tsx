@@ -9,6 +9,9 @@ import { RuntimePanel } from './features/assistant/RuntimePanel';
 import { ActivityView, PermissionsView } from './features/assistant/WorkspacePages';
 import { DeleteConversationDialog } from './features/assistant/DeleteConversationDialog';
 import { voiceApi } from './infrastructure/tauri/voice-api';
+import { speechApi } from './infrastructure/tauri/speech-api';
+import { voiceModeApi } from './infrastructure/tauri/voice-mode-api';
+import { useVoiceMode } from './features/voice/useVoiceMode';
 import { useVoice } from './features/voice/useVoice';
 import { VoiceSetup } from './features/voice/VoiceControls';
 export default function App() {
@@ -21,6 +24,7 @@ export default function App() {
     }
     assistant.setDraft(combined);
   });
+  const voiceMode = useVoiceMode(voiceModeApi, voiceApi, assistant, () => voice.setSetupOpen(true));
   const {
     boot,
     page,
@@ -40,7 +44,7 @@ export default function App() {
         Skip to workspace
       </a>
       <AppSidebar assistant={assistant} />
-      <VoiceSetup voice={voice} />
+      <VoiceSetup voice={voice} speechApi={speechApi} modeApi={voiceModeApi} />
 
       <main id="main-content" tabIndex={-1}>
         <header className="topbar">
@@ -80,7 +84,12 @@ export default function App() {
         />
 
         {page === 'chat' ? (
-          <ChatWorkspace assistant={assistant} desktop={desktop} voice={voice} />
+          <ChatWorkspace
+            assistant={assistant}
+            desktop={desktop}
+            voice={voice}
+            voiceMode={voiceMode}
+          />
         ) : page === 'activity' ? (
           <ActivityView activity={activity} />
         ) : (
@@ -95,7 +104,15 @@ export default function App() {
                 ? 'Checking connection'
                 : 'LM Studio offline'}
           </span>
-          <span>{busy ? 'Generating locally' : 'All tools disabled'}</span>
+          <span>
+            {voiceMode.enabled
+              ? voiceMode.phase === 'waiting' || voiceMode.phase === 'listening'
+                ? 'Voice mode · microphone active'
+                : 'Voice mode · microphone paused'
+              : busy
+                ? 'Generating locally'
+                : 'All tools disabled'}
+          </span>
         </footer>
       </main>
 

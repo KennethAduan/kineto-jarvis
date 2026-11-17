@@ -56,6 +56,7 @@ impl VoiceService {
             downloaded_bytes: self.progress.load(Ordering::Relaxed),
             recording: self.recorder.info(),
             speaking: self.speaker.is_speaking(),
+            playback_error: self.speaker.error(),
         })
     }
     pub fn start(&self) -> Result<(), String> {

@@ -24,17 +24,17 @@ pub fn permissions() -> Vec<Permission> {
         Permission {
             capability: "Voice input",
             state: "on-demand",
-            description: "User-started microphone recording, up to 30 seconds. Whisper runs locally; audio stays in memory.",
+            description: "Manual dictation or explicitly enabled Hey Jarvis voice mode. Wake detection and transcription run locally; audio stays in memory.",
         },
         Permission {
             capability: "Voice playback",
             state: "on-demand",
-            description: "Read a completed reply with the installed system voice. No automatic playback.",
+            description: "Local Kokoro or the selected system voice. Automatic spoken replies only while Voice mode is enabled.",
         },
         Permission {
             capability: "Speech model setup",
             state: "on-demand",
-            description: "Explicit download of a fixed, checksum-verified public speech model. No audio is uploaded.",
+            description: "Explicit downloads of fixed, checksum-verified speech and listening packs. No audio is uploaded.",
         },
         Permission {
             capability: "Web & MCP",

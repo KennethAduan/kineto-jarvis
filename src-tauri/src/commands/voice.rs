@@ -16,9 +16,17 @@ pub(crate) async fn voice_start_recording(state: State<'_, DesktopState>) -> Res
         return Err("Wait for the current reply or stop it before dictating.".into());
     }
     let voice = state.voice.clone();
-    tauri::async_runtime::spawn_blocking(move || voice.start())
-        .await
-        .map_err(|_| "Could not start microphone worker")?
+    let mode = state.voice_mode.clone();
+    let gate = state.audio_gate.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let _gate = gate.lock().map_err(|_| "Microphone state unavailable")?;
+        if mode.status()?.enabled {
+            return Err("Stop voice mode before starting manual dictation.".into());
+        }
+        voice.start()
+    })
+    .await
+    .map_err(|_| "Could not start microphone worker")?
 }
 #[tauri::command]
 pub(crate) async fn voice_finish_recording(

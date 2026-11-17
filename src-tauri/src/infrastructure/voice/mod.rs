@@ -1,4 +1,13 @@
+pub mod assets;
+pub mod kokoro;
+pub mod kokoro_model;
 pub mod microphone;
 pub mod model;
+pub mod phonemes;
+pub mod playback;
 pub mod recognition;
 pub mod speech;
+pub mod speech_preferences;
+pub mod voice_input;
+pub mod wake;
+pub mod wake_model;

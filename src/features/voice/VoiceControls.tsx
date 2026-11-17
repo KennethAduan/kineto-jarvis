@@ -1,4 +1,5 @@
 import { Mic, Settings2, Square, Volume2, VolumeX, X } from 'lucide-react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { InputGroupButton } from '@/components/ui/input-group';
 import {
@@ -10,6 +11,12 @@ import {
 } from '@/components/ui/sheet';
 import { ActivityOrb } from '@/components/feedback/ActivityOrb';
 import type { VoiceController } from './useVoice';
+import type { SpeechGateway } from '@/domain/speech';
+import type { VoiceModeGateway } from '@/domain/voice-mode';
+import { WakeSettings } from './WakeSettings';
+const SpeechSettings = lazy(() =>
+  import('./SpeechSettings').then((module) => ({ default: module.SpeechSettings })),
+);
 
 export function VoiceMicButton({ voice, disabled }: { voice: VoiceController; disabled: boolean }) {
   const recording = voice.stage === 'recording';
@@ -36,17 +43,26 @@ export function VoiceMicButton({ voice, disabled }: { voice: VoiceController; di
 }
 
 export function VoiceActivity({ voice }: { voice: VoiceController }) {
+  const [dismissed, setDismissed] = useState('');
+  const nativeError = voice.status?.playback_error ?? '';
+  useEffect(() => {
+    if (!nativeError) setDismissed('');
+  }, [nativeError]);
+  const playbackError = voice.error || (nativeError !== dismissed ? nativeError : '');
   const active = voice.stage !== 'idle' || voice.pending === 'start' || voice.pending === 'finish';
   return (
     <>
-      {voice.error && (
+      {playbackError && (
         <div className="voice-error" role="alert">
-          <span>{voice.error}</span>
+          <span>{playbackError}</span>
           <Button
             variant="ghost"
             size="icon"
             aria-label="Dismiss voice error"
-            onClick={() => voice.setError('')}
+            onClick={() => {
+              voice.setError('');
+              setDismissed(nativeError);
+            }}
           >
             <X className="size-4" aria-hidden="true" />
           </Button>
@@ -123,27 +139,40 @@ export function VoiceSettingsButton({ voice }: { voice: VoiceController }) {
   );
 }
 
-export function VoiceSetup({ voice }: { voice: VoiceController }) {
+export function VoiceSetup({
+  voice,
+  speechApi,
+  modeApi,
+}: {
+  voice: VoiceController;
+  speechApi: SpeechGateway;
+  modeApi: VoiceModeGateway;
+}) {
   const downloading = voice.stage === 'downloading' || voice.pending === 'download';
   const ready = voice.status?.model.ready ?? false;
   return (
     <Sheet open={voice.setupOpen} onOpenChange={voice.setSetupOpen}>
       <SheetContent className="voice-setup">
         <SheetHeader>
-          <SheetTitle>Offline voice</SheetTitle>
+          <SheetTitle>Voice settings</SheetTitle>
           <SheetDescription>
-            Dictate a message on your device, review the transcript, then send when you’re ready.
+            Choose how JARVIS sounds and set up local voice conversations.
           </SheetDescription>
         </SheetHeader>
         <div className="voice-setup-body">
-          <h3>One-time speech model</h3>
+          <Suspense fallback={<p role="status">Loading voice settings…</p>}>
+            <SpeechSettings api={speechApi} desktop={voice.available} dictating={voice.dictating} />
+          </Suspense>
+          <WakeSettings api={modeApi} desktop={voice.available} />
+          <h3>One-time dictation setup</h3>
           <p>
             Whisper Base understands multiple languages and runs on your CPU. Setup downloads about
             148 MB from Hugging Face and verifies its checksum.
           </p>
           <p>
             After setup, audio never leaves your machine. Recordings stay in memory, are discarded
-            after transcription, and the microphone closes after 30 seconds.
+            after transcription. Manual dictation closes the microphone after 30 seconds and adds
+            its transcript to your draft for review.
           </p>
           <Button
             onClick={() => void voice.download()}
@@ -164,12 +193,7 @@ export function VoiceSetup({ voice }: { voice: VoiceController }) {
             </>
           )}
           {ready && <p className="voice-ready">Offline speech model ready.</p>}
-          <h3>Read-aloud</h3>
-          <p>
-            Use the speaker button on a completed reply. JARVIS uses your installed system voice and
-            skips code blocks. Read-aloud is manual and limited to the first 8,000 characters.
-          </p>
-          <p>No wake word or always-on listening is enabled.</p>
+          <p>Listening only starts when you enable Voice mode or press the dictation microphone.</p>
           {voice.error && (
             <p className="voice-error" role="alert">
               {voice.error}

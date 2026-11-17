@@ -35,6 +35,7 @@ pub struct VoiceStatus {
     pub downloaded_bytes: u64,
     pub recording: RecordingInfo,
     pub speaking: bool,
+    pub playback_error: Option<String>,
 }
 
 pub trait AudioRecorder: Send + Sync {
@@ -45,6 +46,11 @@ pub trait AudioRecorder: Send + Sync {
 }
 pub trait SpeechRecognizer: Send + Sync {
     fn transcribe(&self, samples: Vec<f32>, cancel: CancellationToken) -> Result<String, String>;
+}
+impl<T: SpeechRecognizer + ?Sized> SpeechRecognizer for Arc<T> {
+    fn transcribe(&self, samples: Vec<f32>, cancel: CancellationToken) -> Result<String, String> {
+        (**self).transcribe(samples, cancel)
+    }
 }
 pub trait SpeechModel: Send + Sync {
     fn info(&self) -> SpeechModelInfo;
@@ -58,4 +64,7 @@ pub trait SpeechOutput: Send + Sync {
     fn speak(&self, text: &str) -> Result<(), String>;
     fn stop(&self) -> Result<(), String>;
     fn is_speaking(&self) -> bool;
+    fn error(&self) -> Option<String> {
+        None
+    }
 }

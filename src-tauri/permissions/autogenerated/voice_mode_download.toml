@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-voice-mode-download"
+description = "Enables the voice_mode_download command without any pre-configured scope."
+commands.allow = ["voice_mode_download"]
+
+[[permission]]
+identifier = "deny-voice-mode-download"
+description = "Denies the voice_mode_download command without any pre-configured scope."
+commands.deny = ["voice_mode_download"]

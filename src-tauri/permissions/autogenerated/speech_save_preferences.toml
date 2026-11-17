@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-speech-save-preferences"
+description = "Enables the speech_save_preferences command without any pre-configured scope."
+commands.allow = ["speech_save_preferences"]
+
+[[permission]]
+identifier = "deny-speech-save-preferences"
+description = "Denies the speech_save_preferences command without any pre-configured scope."
+commands.deny = ["speech_save_preferences"]

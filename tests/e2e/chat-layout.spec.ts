@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 
-async function fixture(page: Page, answer?: string) {
+async function fixture(page: Page, answer?: string, kokoroReady = true) {
   const response =
     answer ??
     'Let’s make room for what matters. Start by choosing one important task, then set aside a focused block of time. Leave a little space for breaks and unexpected work. ' +
@@ -22,7 +22,7 @@ async function fixture(page: Page, answer?: string) {
         models:async()=>[{id:'qwen-fixture'}], messages:async()=>messages, activity:async()=>[],
         search:async(query)=>(conversation.title+' '+messages.map(message=>message.content).join(' ')).toLowerCase().includes(query.toLowerCase()) ? [conversation] : [],
         create:async()=>conversation, delete:async()=>{}, cancel:async()=>{},
-        send:async(id,content,model,onEvent)=>{onEvent({kind:'started',message:{id:'pending',conversation_id:id,role:'assistant',content:'',status:'streaming',created_at:1}});onEvent({kind:'thinking'});globalThis.__emitChatDelta=(text)=>onEvent({kind:'delta',text});await new Promise(()=>{});}
+        send:async(id,content,model,onEvent)=>{globalThis.__sentVoiceText=content;onEvent({kind:'started',message:{id:'pending',conversation_id:id,role:'assistant',content:'',status:'streaming',created_at:1}});onEvent({kind:'thinking'});globalThis.__emitChatDelta=(text)=>onEvent({kind:'delta',text});return await new Promise(resolve=>{globalThis.__completeChat=()=>resolve({message:{id:'pending',conversation_id:id,role:'assistant',content:'Two plus two is four.',status:'complete',created_at:1},error:null})});}
       };
     `,
     }),
@@ -37,9 +37,36 @@ async function fixture(page: Page, answer?: string) {
         start:async()=>{stage='recording'},
         finish:async()=>{stage='idle';return 'Voice transcript for review.'},
         cancel:async()=>{stage='idle'},download:async()=>{},
-        speak:async()=>{speaking=true},stop:async()=>{speaking=false}
+        speak:async()=>{speaking=true;globalThis.__spokenReplyCount=(globalThis.__spokenReplyCount??0)+1;globalThis.__finishVoiceReply=()=>{speaking=false}},stop:async()=>{speaking=false}
       };
     `,
+    }),
+  );
+  await page.route('**/src/infrastructure/tauri/speech-api.ts*', (route) =>
+    route.fulfill({
+      contentType: 'application/javascript',
+      body: `
+      let preferences = {voice:'bm_george',speed:0.95}, phase='idle', rejectDownload;
+      export const speechApi = {
+        status:async()=>({preferences,phase,model:{ready:${kokoroReady},bytes:148782633},downloaded_bytes:phase==='downloading'?50000000:0,error:null}),
+        save:async(value)=>{preferences={...value}},
+        preview:async(value)=>{globalThis.__speechPreview={...value};phase='playing'},
+        download:async()=>{phase='downloading';await new Promise((_,reject)=>{rejectDownload=reject})},
+        stop:async()=>{phase='idle';if(rejectDownload){rejectDownload('Download cancelled');rejectDownload=null}}
+      };
+    `,
+    }),
+  );
+  await page.route('**/src/infrastructure/tauri/voice-mode-api.ts*', (route) =>
+    route.fulfill({
+      contentType: 'application/javascript',
+      body: `let enabled=false,phase='off',emit;
+      export const voiceModeApi={
+        status:async()=>({enabled,phase,model:{ready:true,bytes:6682588},downloaded_bytes:0,error:null}),download:async()=>{},
+        start:async(callback)=>{enabled=true;phase='waiting';emit=callback;globalThis.__emitVoiceMode=callback;callback({kind:'phase',phase});return 'session'},
+        heartbeat:async()=>{},resume:async()=>{globalThis.__voiceResumeCount=(globalThis.__voiceResumeCount??0)+1;phase='listening';emit({kind:'phase',phase})},
+        stop:async()=>{enabled=false;phase='off';globalThis.__finishVoiceReply?.()}
+      };`,
     }),
   );
   await page.goto('/');
@@ -66,6 +93,93 @@ test('shadcn Chat aligns user bubbles right and assistant replies left', async (
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
     true,
   );
+});
+
+test('voice mode turns a spoken request into a spoken reply and resumes listening', async ({
+  page,
+}) => {
+  await fixture(page);
+  await page.getByRole('button', { name: 'Voice mode', exact: true }).click();
+  await expect(page.getByRole('region', { name: 'Voice conversation' })).toBeVisible();
+  await expect(page.getByText('Say “Hey Jarvis”', { exact: true })).toBeVisible();
+  await page.evaluate(() => {
+    (window as Window & { __emitVoiceMode: (event: unknown) => void }).__emitVoiceMode({
+      kind: 'phase',
+      phase: 'listening',
+    });
+  });
+  await expect(page.getByText('I’m listening', { exact: true })).toBeVisible();
+  await page.evaluate(() => {
+    (window as Window & { __emitVoiceMode: (event: unknown) => void }).__emitVoiceMode({
+      kind: 'transcript',
+      text: 'What is two plus two?',
+    });
+  });
+  await expect(page.getByText('Thinking it through…', { exact: true })).toBeVisible();
+  expect(
+    await page.evaluate(() => (window as Window & { __sentVoiceText: string }).__sentVoiceText),
+  ).toBe('What is two plus two?');
+  await page.evaluate(() => (window as Window & { __completeChat: () => void }).__completeChat());
+  await expect(page.getByText('JARVIS is speaking', { exact: true })).toBeVisible();
+  await expect(page.getByText('Two plus two is four.', { exact: true })).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => (window as Window & { __spokenReplyCount: number }).__spokenReplyCount,
+    ),
+  ).toBe(1);
+  await page.evaluate(() =>
+    (window as Window & { __finishVoiceReply: () => void }).__finishVoiceReply(),
+  );
+  await expect(page.getByText('I’m listening', { exact: true })).toBeVisible();
+  await page.screenshot({
+    path: test.info().outputPath('voice-conversation.png'),
+    animations: 'disabled',
+  });
+  await page.getByRole('button', { name: 'Stop voice mode', exact: true }).click();
+  await expect(page.getByLabel('Message JARVIS')).toBeVisible();
+});
+
+test('British voice preview is independent of saved reply preferences', async ({ page }) => {
+  await fixture(page);
+  await page.getByRole('button', { name: 'Voice settings', exact: true }).click();
+  await page.getByRole('combobox', { name: 'Voice', exact: true }).click();
+  await page.getByRole('option', { name: 'Fable · British male' }).click();
+  const speed = page.getByRole('slider', { name: 'Speaking speed' });
+  await speed.focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(speed).toHaveAttribute('aria-valuenow', '1');
+  await page.getByRole('button', { name: 'Preview voice', exact: true }).click();
+  await expect(page.getByText('Playing voice', { exact: true })).toBeVisible();
+  expect(
+    await page.evaluate(() => (window as Window & { __speechPreview: unknown }).__speechPreview),
+  ).toEqual({ voice: 'bm_fable', speed: 1 });
+  await page.getByRole('button', { name: 'Stop voice', exact: true }).click();
+  await page.getByRole('button', { name: 'Save voice', exact: true }).click();
+  await expect(page.getByText('Voice saved for future replies.')).toBeVisible();
+  await page.getByRole('button', { name: 'Close', exact: true }).click();
+  await page.getByRole('button', { name: 'Voice settings', exact: true }).click();
+  await expect(page.getByRole('combobox', { name: 'Voice', exact: true })).toContainText('Fable');
+  await expect(page.getByRole('slider', { name: 'Speaking speed' })).toHaveAttribute(
+    'aria-valuenow',
+    '1',
+  );
+  await page.screenshot({
+    path: test.info().outputPath('kokoro-settings.png'),
+    animations: 'disabled',
+  });
+});
+
+test('voice pack setup requires an explicit download and remains cancellable', async ({ page }) => {
+  await fixture(page, undefined, false);
+  await page.getByRole('button', { name: 'Voice settings', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Preview voice', exact: true })).toBeDisabled();
+  const download = page.getByRole('button', { name: 'Download Kokoro · 149 MB', exact: true });
+  await download.click();
+  await expect(page.getByRole('progressbar', { name: 'Kokoro download progress' })).toBeVisible();
+  await page.getByRole('button', { name: 'Cancel download', exact: true }).click();
+  await expect(download).toBeEnabled();
+  await expect(page.getByRole('progressbar', { name: 'Kokoro download progress' })).toHaveCount(0);
+  await expect(page.locator('.speech-settings [role="alert"]')).toHaveCount(0);
 });
 
 test('dictation appends to the draft for review without sending', async ({ page }) => {

@@ -112,10 +112,17 @@ export function useAssistant(api: AssistantGateway, desktop: boolean) {
     setActivity(data.activity);
   }
 
-  async function send() {
-    const content = draft.trim();
+  async function ensureConversation() {
+    if (selected) return selected;
+    const conversation = await api.create();
+    setSelected(conversation.id);
+    setConversations((current) => [conversation, ...current]);
+    return conversation.id;
+  }
+  async function send(contentOverride?: string): Promise<Message | null> {
+    const content = (contentOverride ?? draft).trim();
     if (!content || operation.current || loading || !model || !boot || connection !== 'online')
-      return;
+      return null;
     operation.current = true;
     setBusy(true);
     setError('');
@@ -135,7 +142,7 @@ export function useAssistant(api: AssistantGateway, desktop: boolean) {
         if (event.kind === 'started') {
           submitted = true;
           assistantId = event.message.id;
-          setDraft('');
+          if (contentOverride === undefined) setDraft('');
           const user: Message = {
             id: `pending-${event.message.id}`,
             conversation_id: conversationId,
@@ -161,8 +168,10 @@ export function useAssistant(api: AssistantGateway, desktop: boolean) {
         current.map((m) => (m.id === result.message.id ? result.message : m)),
       );
       if (result.error) setError(result.error);
+      return result.error || result.message.status !== 'complete' ? null : result.message;
     } catch (e) {
       setError(errorText(e));
+      return null;
     } finally {
       // Read the source of truth even after an IPC/persistence error.
       try {
@@ -171,7 +180,7 @@ export function useAssistant(api: AssistantGateway, desktop: boolean) {
       } catch (e) {
         setError(`History refresh failed: ${errorText(e)}`);
       }
-      if (!submitted) setDraft(content);
+      if (!submitted && contentOverride === undefined) setDraft(content);
       operation.current = false;
       setBusy(false);
       setThinking(false);
@@ -228,6 +237,7 @@ export function useAssistant(api: AssistantGateway, desktop: boolean) {
     checkConnection,
     openConversation,
     send,
+    ensureConversation,
     removeConversation,
     cancel,
   };

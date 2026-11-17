@@ -28,6 +28,15 @@ tts = { version = "0.26.3", default-features = false }
 sha2 = "0.10"
 pulldown-cmark = { version = "0.13", default-features = false }
 tempfile = "3"
+misaki-rs = { version = "=0.9.0", default-features = false }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+sherpa-onnx = { version = "=2.0.1", default-features = false, features = ["shared"] }
+# A direct `links` dependency orders native-library staging before our build script.
+sherpa-onnx-sys = { version = "=2.0.1", default-features = false, features = ["shared"] }
+
+[target.'cfg(not(target_os = "windows"))'.dependencies]
+sherpa-onnx = "=2.0.1"
 
 [dev-dependencies]
 hound = "3.5"
