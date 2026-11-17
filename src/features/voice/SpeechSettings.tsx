@@ -29,7 +29,7 @@ export function SpeechSettings({
 }) {
   const speech = useSpeech(api, desktop);
   const [preferences, setPreferences] = useState<SpeechPreferences>({
-    voice: 'bm_george',
+    voice: 'supertonic_m2',
     speed: 1.15,
     volume: 1,
   });
@@ -42,7 +42,13 @@ export function SpeechSettings({
   const phase = speech.status?.phase ?? 'idle';
   const downloading = phase === 'downloading' || speech.pending === 'download';
   const playing = phase === 'playing' || phase === 'preparing';
-  const ready = speech.status?.model.ready ?? false;
+  const supertonic = preferences.voice.startsWith('supertonic');
+  const engine = supertonic ? 'Supertonic 3' : 'Kokoro';
+  const bytes = supertonic ? 145311845 : 148782633;
+  const ready =
+    speech.status?.packs?.[supertonic ? 'supertonic' : 'kokoro'].ready ??
+    speech.status?.model.ready ??
+    false;
   const system = preferences.voice === 'system';
   const disabled = !desktop || !speech.status || !!speech.pending || phase !== 'idle' || dictating;
   const changed =
@@ -53,7 +59,10 @@ export function SpeechSettings({
         <Volume2 className="size-4" aria-hidden="true" />
         <h3 id="speech-heading">Spoken replies</h3>
       </div>
-      <p>Choose a British Kokoro voice for a more natural assistant. Speech runs on this device.</p>
+      <p>
+        Supertonic 3 is the new conversational voice. Kokoro British voices remain available. Speech
+        runs on this device.
+      </p>
       <div className="speech-field">
         <label htmlFor="speech-voice">Voice</label>
         <Select
@@ -121,8 +130,8 @@ export function SpeechSettings({
       </div>
       {!system && !ready && (
         <p className="speech-setup-hint">
-          Download the Kokoro voice pack once to enable previews and read-aloud. About 149 MB, with
-          verified checksums.
+          Download the {engine} voice pack once to enable previews and spoken replies. About{' '}
+          {Math.round(bytes / 1000000)} MB, with verified checksums.
         </p>
       )}
       <div className="speech-actions">
@@ -147,11 +156,17 @@ export function SpeechSettings({
       )}
       {(!system || downloading) && (
         <div className="speech-download">
-          <Button variant="outline" disabled={disabled} onClick={() => void speech.download()}>
+          <Button
+            variant="outline"
+            disabled={disabled}
+            onClick={() => void speech.download(preferences.voice)}
+          >
             <Download className="size-4" aria-hidden="true" />
-            {ready ? 'Reinstall Kokoro voice pack' : 'Download Kokoro · 149 MB'}
+            {ready
+              ? `Reinstall ${engine} voice pack`
+              : `Download ${engine} · ${Math.round(bytes / 1000000)} MB`}
           </Button>
-          {ready && <small className="voice-ready">Kokoro voice pack ready.</small>}
+          {ready && <small className="voice-ready">{engine} voice pack ready.</small>}
         </div>
       )}
       {(downloading || playing) && (
@@ -161,7 +176,7 @@ export function SpeechSettings({
           />
           <span>
             {downloading
-              ? `Downloading Kokoro · ${Math.min(100, Math.round(((speech.status?.downloaded_bytes ?? 0) / (speech.status?.model.bytes || 148782633)) * 100))}%`
+              ? `Downloading ${engine} · ${Math.min(100, Math.round(((speech.status?.downloaded_bytes ?? 0) / (speech.status?.model.bytes || 148782633)) * 100))}%`
               : phase === 'preparing'
                 ? 'Preparing local voice…'
                 : 'Playing voice'}
@@ -174,7 +189,7 @@ export function SpeechSettings({
       )}
       {downloading && (
         <progress
-          aria-label="Kokoro download progress"
+          aria-label={`${engine} download progress`}
           value={speech.status?.downloaded_bytes ?? 0}
           max={speech.status?.model.bytes ?? 148782633}
         />

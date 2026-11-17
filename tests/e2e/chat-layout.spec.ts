@@ -19,10 +19,10 @@ async function fixture(page: Page, answer?: string, kokoroReady = true) {
       ];
       export const api = {
         bootstrap:async()=>({conversations:[conversation],activity:[],platform:{name:'Windows',automation_available:false},permissions:[],endpoint:'http://127.0.0.1:1234/v1'}),
-        models:async()=>[{id:'qwen-fixture'}], messages:async()=>messages, activity:async()=>[],
+        models:async()=>[{id:'qwen/qwen3.5-9b'},{id:'qwen/qwen3-4b-2507'}], messages:async()=>messages, activity:async()=>[],
         search:async(query)=>(conversation.title+' '+messages.map(message=>message.content).join(' ')).toLowerCase().includes(query.toLowerCase()) ? [conversation] : [],
         create:async()=>conversation, delete:async()=>{}, cancel:async()=>{},
-        send:async(id,content,model,onEvent)=>{globalThis.__sentVoiceText=content;onEvent({kind:'started',message:{id:'pending',conversation_id:id,role:'assistant',content:'',status:'streaming',created_at:1}});onEvent({kind:'thinking'});globalThis.__emitChatDelta=(text)=>{onEvent({kind:'delta',text});if(globalThis.__voiceEnabled)globalThis.__startNativeSpeech?.()};return await new Promise(resolve=>{globalThis.__completeChat=()=>resolve({message:{id:'pending',conversation_id:id,role:'assistant',content:'Two plus two is four.',status:'complete',created_at:1},error:null})});}
+        send:async(id,content,model,onEvent)=>{globalThis.__sentVoiceText=content;onEvent({kind:'started',message:{id:'pending',conversation_id:id,role:'assistant',content:'',status:'streaming',created_at:1}});onEvent({kind:'thinking'});globalThis.__emitChatDelta=(text)=>{onEvent({kind:'delta',text});if(globalThis.__voiceEnabled)globalThis.__startNativeSpeech?.()};return await new Promise(resolve=>{globalThis.__cancelChat=()=>resolve({message:{id:'pending',conversation_id:id,role:'assistant',content:'',status:'cancelled',created_at:1},error:null});globalThis.__completeChat=()=>resolve({message:{id:'pending',conversation_id:id,role:'assistant',content:'Two plus two is four.',status:'complete',created_at:1},error:null})});}
       };
     `,
     }),
@@ -64,10 +64,17 @@ async function fixture(page: Page, answer?: string, kokoroReady = true) {
       body: `let enabled=false,phase='off',emit;
       export const voiceModeApi={
         status:async()=>({enabled,phase,model:{ready:true,bytes:6682588},downloaded_bytes:0,error:null}),download:async()=>{},
-        start:async(callback)=>{enabled=true;globalThis.__voiceEnabled=true;phase='waiting';emit=callback;globalThis.__emitVoiceMode=callback;callback({kind:'phase',phase});return 'session'},
+        start:async(callback)=>{enabled=true;globalThis.__voiceEnabled=true;phase='waiting';emit=callback;globalThis.__emitVoiceMode=(event)=>{if(event.kind==='interrupted'){globalThis.__finishVoiceReply?.();globalThis.__cancelChat?.()}callback(event)};callback({kind:'phase',phase});return 'session'},
         heartbeat:async()=>{},resume:async()=>{globalThis.__voiceResumeCount=(globalThis.__voiceResumeCount??0)+1;phase='listening';emit({kind:'phase',phase})},
         stop:async()=>{enabled=false;globalThis.__voiceEnabled=false;phase='off';globalThis.__finishVoiceReply?.()}
       };`,
+    }),
+  );
+  await page.route('**/src/infrastructure/tauri/profile-api.ts*', (route) =>
+    route.fulfill({
+      contentType: 'application/javascript',
+      body: `let profile={display_name:'Avery Example', content:'Engineer in Example City.\\n\\nEDUCATION\\nExample University.',enabled:true};
+    export const profileApi={get:async()=>({...profile}),save:async(next)=>{profile={...next}}};`,
     }),
   );
   await page.goto('/');
@@ -104,14 +111,14 @@ test('voice mode turns a spoken request into a spoken reply and resumes listenin
   await expect(page.getByRole('region', { name: 'Voice conversation' })).toBeVisible();
   await expect(page.getByText('Say “Hey Jarvis”', { exact: true })).toBeVisible();
   const meter = page.getByRole('meter', { name: 'Microphone input level' });
-  await expect(meter).toHaveAttribute('aria-valuenow', '0');
+  await expect(meter).toHaveAttribute('aria-valuenow', '-60.0');
   await page.evaluate(() => {
     (window as Window & { __emitVoiceMode: (event: unknown) => void }).__emitVoiceMode({
       kind: 'input_level',
       level: 0.7,
     });
   });
-  await expect(meter).toHaveAttribute('aria-valuenow', '70');
+  await expect(meter).toHaveAttribute('aria-valuenow', '-18.0');
   await expect(page.getByText('Audio detected · microphone is receiving sound')).toBeVisible();
   await page.evaluate(() => {
     (window as Window & { __emitVoiceMode: (event: unknown) => void }).__emitVoiceMode({
@@ -352,4 +359,71 @@ test('formats answers without fetching images or allowing model-generated naviga
     true,
   );
   await page.screenshot({ path: test.info().outputPath('formatted-chat.png') });
+});
+
+test('personal memory can be edited, disabled and forgotten independently of chats', async ({
+  page,
+}) => {
+  await fixture(page);
+  await page.getByRole('button', { name: 'Personal memory', exact: true }).click();
+  await expect(page.getByLabel('Your name', { exact: true })).toHaveValue('Avery Example');
+  await page
+    .getByLabel('About you', { exact: true })
+    .fill('Engineering background.\n\nSKILLS\nTypeScript and React.');
+  await page.getByLabel('Use personal memory in future replies').uncheck();
+  await page.getByRole('button', { name: 'Save memory', exact: true }).click();
+  await expect(page.getByText('Personal memory saved for future replies.')).toBeVisible();
+  await page.getByRole('button', { name: 'Close', exact: true }).click();
+  await page.getByRole('button', { name: 'Personal memory', exact: true }).click();
+  await expect(page.getByLabel('Use personal memory in future replies')).not.toBeChecked();
+  await expect(page.getByLabel('About you', { exact: true })).toContainText('TypeScript');
+  await page.screenshot({ path: test.info().outputPath('personal-memory.png') });
+  await page.getByRole('button', { name: 'Forget profile', exact: true }).click();
+  await page.getByRole('button', { name: 'Confirm forget', exact: true }).click();
+  await expect(page.getByLabel('Your name', { exact: true })).toHaveValue('');
+  await expect(page.getByLabel('About you', { exact: true })).toHaveValue('');
+  await page.getByRole('button', { name: 'Close', exact: true }).click();
+  await expect(page.getByTitle('Layout fixture')).toBeVisible();
+});
+
+test('speaking over a reply cancels that turn and keeps voice mode ready for the next question', async ({
+  page,
+}) => {
+  await fixture(page);
+  await expect(page.getByRole('combobox', { name: 'ACTIVE MODEL' })).toHaveValue(
+    'qwen/qwen3-4b-2507',
+  );
+  await page.getByRole('button', { name: 'Voice mode', exact: true }).click();
+  await page.evaluate(() =>
+    (window as Window & { __emitVoiceMode: (event: unknown) => void }).__emitVoiceMode({
+      kind: 'transcript',
+      text: 'Give a long answer',
+    }),
+  );
+  await page.evaluate(() =>
+    (window as Window & { __emitChatDelta: (text: string) => void }).__emitChatDelta(
+      'Here is the first part of the answer. ',
+    ),
+  );
+  await expect(page.getByText('JARVIS is speaking', { exact: true })).toBeVisible();
+  await page.evaluate(() =>
+    (window as Window & { __emitVoiceMode: (event: unknown) => void }).__emitVoiceMode({
+      kind: 'interrupted',
+    }),
+  );
+  await expect(page.getByText('I’m listening', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Stop voice mode', exact: true })).toBeInViewport();
+  await page.evaluate(() =>
+    (window as Window & { __emitVoiceMode: (event: unknown) => void }).__emitVoiceMode({
+      kind: 'transcript',
+      text: 'Actually, answer a different question',
+    }),
+  );
+  await expect
+    .poll(() =>
+      page.evaluate(() => (window as Window & { __sentVoiceText: string }).__sentVoiceText),
+    )
+    .toBe('Actually, answer a different question');
+  await page.getByRole('button', { name: 'Stop voice mode', exact: true }).click();
+  await expect(page.getByLabel('Message JARVIS')).toBeVisible();
 });

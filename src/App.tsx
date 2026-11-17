@@ -14,7 +14,11 @@ import { voiceModeApi } from './infrastructure/tauri/voice-mode-api';
 import { useVoiceMode } from './features/voice/useVoiceMode';
 import { useVoice } from './features/voice/useVoice';
 import { VoiceSetup } from './features/voice/VoiceControls';
+import { useState } from 'react';
+import { profileApi } from './infrastructure/tauri/profile-api';
+import { PersonalMemory } from './features/profile/PersonalMemory';
 export default function App() {
+  const [memoryOpen, setMemoryOpen] = useState(false);
   const assistant = useAssistant(api, desktop);
   const voice = useVoice(voiceApi, desktop, assistant.selected, (text) => {
     const combined = assistant.draft ? `${assistant.draft}\n${text}` : text;
@@ -43,7 +47,13 @@ export default function App() {
       <a className="skip-link" href="#main-content">
         Skip to workspace
       </a>
-      <AppSidebar assistant={assistant} />
+      <AppSidebar assistant={assistant} onOpenMemory={() => setMemoryOpen(true)} />
+      <PersonalMemory
+        api={profileApi}
+        open={memoryOpen}
+        onOpenChange={setMemoryOpen}
+        disabled={!desktop || busy || voiceMode.enabled}
+      />
       <VoiceSetup voice={voice} speechApi={speechApi} modeApi={voiceModeApi} />
 
       <main id="main-content" tabIndex={-1}>
@@ -106,7 +116,7 @@ export default function App() {
           </span>
           <span>
             {voiceMode.enabled
-              ? voiceMode.phase === 'waiting' || voiceMode.phase === 'listening'
+              ? voiceMode.micActive
                 ? 'Voice mode · microphone active'
                 : 'Voice mode · microphone paused'
               : busy

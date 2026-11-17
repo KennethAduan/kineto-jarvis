@@ -1,4 +1,5 @@
 pub mod assets;
+pub mod echo;
 pub mod kokoro;
 pub mod kokoro_model;
 mod loudness;
@@ -9,6 +10,8 @@ pub mod playback;
 pub mod recognition;
 pub mod speech;
 pub mod speech_preferences;
+pub mod supertonic;
+pub mod supertonic_model;
 pub mod voice_input;
 pub mod wake;
 pub mod wake_model;

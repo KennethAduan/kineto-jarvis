@@ -112,7 +112,10 @@ impl SpeechSynthesizer for Kokoro {
             return Err("Kokoro returned invalid or oversized audio".into());
         }
         Ok(SpeechAudio {
-            samples: super::loudness::normalize(samples, preferences.volume),
+            samples: super::loudness::normalize(
+                super::loudness::speech_edges(samples, 24_000),
+                preferences.volume,
+            ),
             sample_rate: 24_000,
         })
     }
@@ -179,7 +182,10 @@ mod tests {
         let fragment = engine
             .synthesize(
                 "I can help you plan the rest of",
-                SpeechPreferences::default(),
+                SpeechPreferences {
+                    voice: crate::domain::speech::SpeechVoice::George,
+                    ..Default::default()
+                },
                 CancellationToken::new(),
             )
             .unwrap();

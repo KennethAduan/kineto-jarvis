@@ -70,6 +70,19 @@ pub(crate) fn delete_conversation(
 pub(crate) fn cancel_generation(state: State<DesktopState>) -> Result<(), String> {
     state.assistant.cancel()
 }
+#[tauri::command]
+pub(crate) fn profile_get(
+    state: State<DesktopState>,
+) -> Result<crate::domain::profile::Profile, String> {
+    state.assistant.profile()
+}
+#[tauri::command]
+pub(crate) fn profile_save(
+    state: State<DesktopState>,
+    profile: crate::domain::profile::Profile,
+) -> Result<(), String> {
+    state.assistant.save_profile(&profile)
+}
 
 struct ChannelSink(Channel<StreamEvent>);
 impl EventSink for ChannelSink {
@@ -106,7 +119,7 @@ pub(crate) async fn send_message(
 }
 
 pub(crate) struct DesktopState {
-    pub assistant: AssistantService,
+    pub assistant: std::sync::Arc<AssistantService>,
     pub platform: PlatformInfo,
     pub endpoint: &'static str,
     pub voice: std::sync::Arc<crate::application::voice::VoiceService>,

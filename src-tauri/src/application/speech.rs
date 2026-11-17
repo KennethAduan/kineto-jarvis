@@ -26,17 +26,25 @@ pub struct SpeechStatus {
     pub phase: SpeechPhase,
     pub downloaded_bytes: u64,
     pub error: Option<String>,
+    pub packs: SpeechPacks,
+}
+#[derive(Serialize)]
+pub struct SpeechPacks {
+    pub kokoro: SpeechModelInfo,
+    pub supertonic: SpeechModelInfo,
 }
 struct Task {
     phase: SpeechPhase,
     cancel: CancellationToken,
     error: Option<String>,
+    download_voice: Option<SpeechVoice>,
 }
 struct Inner {
     synthesizer: Box<dyn SpeechSynthesizer>,
     player: Box<dyn AudioPlayback>,
     store: Box<dyn SpeechPreferencesStore>,
     model: Box<dyn SpeechModel>,
+    supertonic: Box<dyn SpeechModel>,
     system: Box<dyn SpeechOutput>,
     preferences: Mutex<SpeechPreferences>,
     task: Mutex<Task>,
@@ -63,6 +71,7 @@ impl Drop for Job {
     fn drop(&mut self) {
         if let Ok(mut task) = self.0.task.lock() {
             task.phase = SpeechPhase::Idle;
+            task.download_voice = None;
         }
     }
 }
@@ -72,36 +81,44 @@ impl SpeechService {
         player: Box<dyn AudioPlayback>,
         store: Box<dyn SpeechPreferencesStore>,
         model: Box<dyn SpeechModel>,
+        supertonic: Box<dyn SpeechModel>,
         system: Box<dyn SpeechOutput>,
     ) -> Result<Self, String> {
         let (preferences, error) = match store.load().and_then(|preferences| { preferences.validate()?; Ok(preferences) }) {
             Ok(preferences) => (preferences, None),
-            Err(_) => (SpeechPreferences::default(), Some("Saved voice preferences could not be read. Using George until you save a new preference.".into())),
+            Err(_) => (SpeechPreferences::default(), Some("Saved voice preferences could not be read. Using Supertonic until you save a new preference.".into())),
         };
         Ok(Self(Arc::new(Inner {
             synthesizer,
             player,
             store,
             model,
+            supertonic,
             system,
             preferences: Mutex::new(preferences),
             task: Mutex::new(Task {
                 phase: SpeechPhase::Idle,
                 cancel: CancellationToken::new(),
                 error,
+                download_voice: None,
             }),
             progress: Arc::new(AtomicU64::new(0)),
         })))
     }
     pub fn status(&self) -> Result<SpeechStatus, String> {
         let task = self.0.task.lock().map_err(|_| "Speech state unavailable")?;
+        let preferences = *self
+            .0
+            .preferences
+            .lock()
+            .map_err(|_| "Voice preferences unavailable")?;
         Ok(SpeechStatus {
-            preferences: *self
-                .0
-                .preferences
-                .lock()
-                .map_err(|_| "Voice preferences unavailable")?,
-            model: self.0.model.info(),
+            preferences,
+            model: pack(&self.0, task.download_voice.unwrap_or(preferences.voice)).info(),
+            packs: SpeechPacks {
+                kokoro: self.0.model.info(),
+                supertonic: self.0.supertonic.info(),
+            },
             phase: task.phase,
             downloaded_bytes: self.0.progress.load(Ordering::Relaxed),
             error: task.error.clone(),
@@ -126,11 +143,18 @@ impl SpeechService {
         preferences.validate()?;
         self.start(PREVIEW_TEXT, Some(preferences))
     }
-    pub async fn download(&self) -> Result<(), String> {
+    pub async fn download(&self, voice: SpeechVoice) -> Result<(), String> {
         let cancel = self.begin(SpeechPhase::Downloading)?;
         let _job = Job(self.0.clone());
+        self.0
+            .task
+            .lock()
+            .map_err(|_| "Speech state unavailable")?
+            .download_voice = Some(voice);
         self.0.progress.store(0, Ordering::Relaxed);
-        self.0.model.download(cancel, self.0.progress.clone()).await
+        pack(&self.0, voice)
+            .download(cancel, self.0.progress.clone())
+            .await
     }
     fn begin(&self, phase: SpeechPhase) -> Result<CancellationToken, String> {
         let mut task = self.0.task.lock().map_err(|_| "Speech state unavailable")?;
@@ -155,8 +179,10 @@ impl SpeechService {
             .preferences
             .lock()
             .map_err(|_| "Voice preferences unavailable")?;
-        if preferences.voice != SpeechVoice::System && !self.0.model.info().ready {
-            return Err("Download the Kokoro voice pack first.".into());
+        if preferences.voice != SpeechVoice::System
+            && !pack(&self.0, preferences.voice).info().ready
+        {
+            return Err("Download the selected voice pack first.".into());
         }
         let cancel = parent.child_token();
         if cancel.is_cancelled() {
@@ -206,9 +232,11 @@ impl SpeechService {
                 .lock()
                 .map_err(|_| "Voice preferences unavailable")?,
         );
-        if preferences.voice != SpeechVoice::System && !self.0.model.info().ready {
+        if preferences.voice != SpeechVoice::System
+            && !pack(&self.0, preferences.voice).info().ready
+        {
             return Err(
-                "Download the Kokoro voice pack in Voice settings before reading aloud.".into(),
+                "Download the selected voice pack in Voice settings before reading aloud.".into(),
             );
         }
         task.phase = SpeechPhase::Preparing;
@@ -238,6 +266,13 @@ impl SpeechService {
                 "Could not start the speech worker".to_owned()
             })?;
         Ok(())
+    }
+}
+fn pack(inner: &Inner, voice: SpeechVoice) -> &dyn SpeechModel {
+    if voice.is_supertonic() {
+        &*inner.supertonic
+    } else {
+        &*inner.model
     }
 }
 impl SpeechOutput for SpeechService {
@@ -519,6 +554,7 @@ mod tests {
                 player,
                 Box::new(Store(preferences.clone())),
                 Box::new(Model(ready)),
+                Box::new(Model(ready)),
                 Box::new(System),
             )
             .unwrap(),
@@ -639,7 +675,7 @@ mod tests {
         speech.preview(preview).unwrap();
         until(|| speech.status().unwrap().phase == SpeechPhase::Idle);
         assert_eq!(seen.0.lock().unwrap()[0], preview);
-        assert_eq!(store.lock().unwrap().voice, SpeechVoice::George);
+        assert_eq!(store.lock().unwrap().voice, SpeechVoice::Supertonic2);
         let saved = SpeechPreferences {
             voice: SpeechVoice::Daniel,
             speed: 1.2,

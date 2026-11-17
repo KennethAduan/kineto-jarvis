@@ -7,6 +7,7 @@ import {
   Trash2,
   Search,
   X,
+  Brain,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -21,7 +22,13 @@ import {
 import type { AssistantController } from './useAssistant';
 import { Input } from '@/components/ui/input';
 import { ActivityOrb } from '@/components/feedback/ActivityOrb';
-export function AppSidebar({ assistant }: { assistant: AssistantController }) {
+export function AppSidebar({
+  assistant,
+  onOpenMemory,
+}: {
+  assistant: AssistantController;
+  onOpenMemory: () => void;
+}) {
   const { boot, busy, page, setPage, setDeleteId, history, selected, openConversation } = assistant;
   const conversations = history.conversations;
   return (
@@ -144,6 +151,9 @@ export function AppSidebar({ assistant }: { assistant: AssistantController }) {
         </div>
       </SidebarContent>
       <SidebarFooter className="p-0">
+        <Button variant="ghost" className="memory-entry" onClick={onOpenMemory} disabled={!boot}>
+          <Brain size={17} aria-hidden="true" /> Personal memory
+        </Button>
         <div className="sidebar-bottom">
           <ShieldCheck aria-hidden="true" size={17} />
           <div>

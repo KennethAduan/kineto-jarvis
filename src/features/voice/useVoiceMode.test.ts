@@ -52,6 +52,35 @@ function fixture() {
   return { api, assistant, voice, message, emit: (event: VoiceModeEvent) => receive(event) };
 }
 describe('hands-free voice conversation', () => {
+  it('keeps the session and waits for cancellation before sending an interrupted follow-up', async () => {
+    const { api, assistant, voice, message, emit } = fixture();
+    let finish!: (value: Message | null) => void;
+    const send = vi
+      .fn<AssistantController['send']>()
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finish = resolve;
+          }),
+      )
+      .mockResolvedValue(message);
+    assistant.send = send;
+    const { result } = renderHook(() => useVoiceMode(api, voice, assistant, vi.fn()));
+    await act(() => result.current.start());
+    act(() => emit({ kind: 'transcript', text: 'A long first question' }));
+    act(() => emit({ kind: 'interrupted' }));
+    expect(result.current.phase).toBe('listening');
+    expect(result.current.enabled).toBe(true);
+    act(() => emit({ kind: 'transcript', text: 'Actually, a different question' }));
+    expect(send).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      finish(null);
+    });
+    await waitFor(() => expect(send).toHaveBeenLastCalledWith('Actually, a different question'));
+    expect(result.current.error).toBe('');
+    expect(voice.speak).not.toHaveBeenCalled();
+    await act(() => result.current.stop());
+  });
   it('keeps the current spoken reply when history refresh supplies an older completed message', async () => {
     const { api, assistant, voice, message, emit } = fixture();
     const status = await voice.status();

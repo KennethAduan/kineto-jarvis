@@ -11,11 +11,12 @@ use std::{
     },
     time::Duration,
 };
-pub struct NativeVoiceInput;
+pub struct NativeVoiceInput(pub Arc<super::echo::RenderReference>);
 struct Frames {
     _stream: cpal::Stream,
     receiver: Receiver<Vec<f32>>,
     failed: Arc<AtomicBool>,
+    echo: std::sync::Mutex<super::echo::CaptureEcho>,
 }
 impl InputFrames for Frames {
     fn next(&self, timeout: Duration) -> Result<Option<Vec<f32>>, String> {
@@ -23,7 +24,12 @@ impl InputFrames for Frames {
             return Err("Voice audio was interrupted or processing fell behind. Check the microphone and try again.".into());
         }
         match self.receiver.recv_timeout(timeout) {
-            Ok(frame) => Ok(Some(frame)),
+            Ok(frame) => Ok(Some(
+                self.echo
+                    .lock()
+                    .map_err(|_| "Microphone processing unavailable")?
+                    .filter(frame)?,
+            )),
             Err(RecvTimeoutError::Timeout) => Ok(None),
             Err(_) => Err("Microphone disconnected".into()),
         }
@@ -111,6 +117,7 @@ impl VoiceInput for NativeVoiceInput {
             .play()
             .map_err(|_| "Cannot start voice mode microphone")?;
         Ok(Box::new(Frames {
+            echo: std::sync::Mutex::new(super::echo::CaptureEcho::new(self.0.clone())?),
             _stream: stream,
             receiver,
             failed,

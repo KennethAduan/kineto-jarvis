@@ -79,7 +79,7 @@ impl BritishPhonemizer {
     pub fn phonemes(&self, text: &str) -> Result<Vec<i32>, String> {
         let (phonemes, _) = self
             .0
-            .g2p(&spoken_text(text))
+            .g2p(&pronunciation_overrides(&spoken_text(text)))
             .map_err(|_| "Could not prepare English pronunciation")?;
         if phonemes.contains('❓') {
             return Err("These Kokoro voices support English. Try the system voice for unsupported words or languages.".into());
@@ -93,10 +93,45 @@ impl BritishPhonemizer {
         Ok(result)
     }
 }
+fn pronunciation_overrides(text: &str) -> String {
+    // Explicit Misaki phoneme markers also override all-caps acronym handling.
+    let mut result = String::new();
+    let mut word = String::new();
+    let flush = |word: &mut String, result: &mut String| {
+        let replacement = match word.to_ascii_lowercase().as_str() {
+            "jarvis" => Some("[Jarvis](/ʤˈɑːvɪs/)"),
+            "ultron" => Some("[Ultron](/ˈʌltrɒn/)"),
+            _ => None,
+        };
+        result.push_str(replacement.unwrap_or(word));
+        word.clear();
+    };
+    for c in text.chars() {
+        if c.is_alphabetic() {
+            word.push(c);
+        } else {
+            flush(&mut word, &mut result);
+            result.push(c);
+        }
+    }
+    flush(&mut word, &mut result);
+    result
+}
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn assistant_names_are_pronounced_as_words_even_when_capitalized() {
+        let engine = BritishPhonemizer(G2P::with_fallback(Language::EnglishGB, None));
+        let phones = engine.phonemes("JARVIS and ULTRON.").unwrap();
+        let readable: String = phones
+            .iter()
+            .filter_map(|p| char::from_u32(*p as u32))
+            .collect();
+        assert!(readable.contains("ʤˈɑːvɪs"), "{readable}");
+        assert!(readable.contains("ˈʌltrɒn"), "{readable}");
+    }
     #[test]
     fn decorative_emoji_do_not_break_english_replies() {
         let engine = BritishPhonemizer(G2P::with_fallback(

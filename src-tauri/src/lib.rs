@@ -24,13 +24,21 @@ pub fn run() {
             let dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&dir)?;
             let store = SqliteStore::open(&dir.join("jarvis.db")).map_err(std::io::Error::other)?;
+            let assistant = std::sync::Arc::new(AssistantService::new(
+                Box::new(store),
+                Box::new(LmStudioGateway::local()?),
+            ));
             let speech_model = dir.join("voice").join("ggml-base.bin");
             let recognizer = std::sync::Arc::new(
                 infrastructure::voice::recognition::LocalWhisper::new(speech_model.clone()),
             );
+            let render_reference =
+                std::sync::Arc::new(infrastructure::voice::echo::RenderReference::default());
             let wake_directory = dir.join("voice").join("hey-jarvis-v1");
             let voice_mode = application::voice_mode::VoiceModeService::new(
-                Box::new(infrastructure::voice::voice_input::NativeVoiceInput),
+                Box::new(infrastructure::voice::voice_input::NativeVoiceInput(
+                    render_reference.clone(),
+                )),
                 Box::new(infrastructure::voice::wake::NativeWakeFactory(
                     wake_directory.clone(),
                 )),
@@ -39,17 +47,29 @@ pub fn run() {
                 )),
                 recognizer.clone(),
                 Box::new(infrastructure::voice::wake_model::WakeModel(wake_directory)),
+                assistant.clone(),
             );
             let kokoro = dir.join("voice").join("kokoro-int8-v1");
+            let supertonic = dir.join("voice").join("supertonic-3-int8-v1");
             let speech = application::speech::SpeechService::new(
-                Box::new(infrastructure::voice::kokoro::Kokoro::new(kokoro.clone())),
-                Box::new(infrastructure::voice::playback::SystemAudioPlayback),
+                Box::new(infrastructure::voice::supertonic::VoiceEngines {
+                    kokoro: infrastructure::voice::kokoro::Kokoro::new(kokoro.clone()),
+                    supertonic: infrastructure::voice::supertonic::Supertonic::new(
+                        supertonic.clone(),
+                    ),
+                }),
+                Box::new(infrastructure::voice::playback::SystemAudioPlayback(
+                    render_reference,
+                )),
                 Box::new(
                     infrastructure::voice::speech_preferences::JsonSpeechPreferences(
                         dir.join("voice").join("preferences.json"),
                     ),
                 ),
                 Box::new(infrastructure::voice::kokoro_model::KokoroModel(kokoro)),
+                Box::new(infrastructure::voice::supertonic_model::SupertonicModel(
+                    supertonic,
+                )),
                 Box::<infrastructure::voice::speech::SystemSpeech>::default(),
             )
             .map_err(std::io::Error::other)?;
@@ -62,10 +82,7 @@ pub fn run() {
                 Box::new(speech.clone()),
             ));
             app.manage(DesktopState {
-                assistant: AssistantService::new(
-                    Box::new(store),
-                    Box::new(LmStudioGateway::local()?),
-                ),
+                assistant,
                 platform: platform::info(),
                 endpoint: lm_studio::ENDPOINT,
                 voice,
@@ -85,6 +102,8 @@ pub fn run() {
             cancel_generation,
             get_activity,
             search_conversations,
+            profile_get,
+            profile_save,
             voice_status,
             voice_download_model,
             voice_start_recording,

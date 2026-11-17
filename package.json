@@ -16,6 +16,7 @@
     "check:native": "cargo test --manifest-path src-tauri/Cargo.toml"
   },
   "dependencies": {
+    "@base-ui/react": "^1.9.0",
     "@shadcn/react": "^0.3.1",
     "@tauri-apps/api": "^2.12.4",
     "class-variance-authority": "^0.7.1",

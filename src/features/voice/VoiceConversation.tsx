@@ -1,6 +1,7 @@
-import { Headphones, Square, X } from 'lucide-react';
+import { Headphones, Square, X, Mic, Cpu, Volume2, ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ActivityOrb } from '@/components/feedback/ActivityOrb';
+import { AudioInputDisplay } from './AudioInputDisplay';
 import type { VoiceModeController } from './useVoiceMode';
 export function VoiceModeButton({
   mode,
@@ -51,45 +52,81 @@ export function VoiceConversation({ mode }: { mode: VoiceModeController }) {
             ? 'Opening local voice…'
             : 'Thinking it through…';
   return (
-    <section className="voice-conversation" aria-label="Voice conversation">
-      <div className="eyebrow">LOCAL VOICE CONVERSATION</div>
-      <div className="conversation-orb">
-        <ActivityOrb
-          size={64}
-          state={
-            waiting ? 'breathing' : listening ? 'listening' : speaking ? 'composing' : 'solving'
-          }
-        />
+    <section className="voice-conversation audio-console" aria-label="Voice conversation">
+      <div className="audio-console-heading">
+        <span className="eyebrow">JARVIS / VOICE WORKSPACE</span>
+        <span>
+          <ShieldCheck size={13} /> LOCAL SESSION
+        </span>
       </div>
-      <h2 role="status" aria-live="polite">
-        {label}
-      </h2>
-      <p>
-        {waiting
-          ? 'Say the wake phrase, then ask your question.'
-          : listening
-            ? 'Speak naturally. Pause when you’re finished.'
-            : speaking
-              ? 'The microphone is paused while JARVIS responds.'
-              : 'Your request is being processed on this device.'}
-      </p>
-      <div className="voice-input-meter">
-        <div
-          role="meter"
-          aria-label="Microphone input level"
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-valuenow={Math.round(mode.inputLevel * 100)}
-        >
-          <span style={{ width: `${mode.inputLevel * 100}%` }} />
+      <Button
+        autoFocus
+        aria-keyshortcuts="Escape"
+        className="voice-end-button"
+        variant="outline"
+        onClick={() => void mode.stop()}
+      >
+        <Square className="size-4" aria-hidden="true" />
+        Stop voice mode
+      </Button>
+      <div className="jarvis-audio-deck">
+        <div className="audio-deck-topline">
+          <span>JARVIS</span>
+          <span className={`audio-session-light ${waiting || listening ? 'live' : ''}`}>
+            {waiting || listening ? 'LISTENING' : speaking ? 'VOICE OUT' : 'PROCESSING'}
+          </span>
         </div>
-        <small>
-          {waiting || listening
-            ? mode.inputLevel > 0.25
-              ? 'Audio detected · microphone is receiving sound'
-              : 'Speak to check your microphone'
-            : 'Microphone paused'}
-        </small>
+        <div className="audio-identity">
+          <div className="conversation-orb">
+            <ActivityOrb
+              size={64}
+              state={
+                waiting ? 'breathing' : listening ? 'listening' : speaking ? 'composing' : 'solving'
+              }
+            />
+          </div>
+          <div>
+            <span className="audio-engine-label">YOUR LOCAL ASSISTANT</span>
+            <h2 role="status" aria-live="polite">
+              {label}
+            </h2>
+            <p>
+              {waiting
+                ? 'Say the wake phrase, then ask your question.'
+                : listening
+                  ? 'Speak naturally. Pause when you’re finished.'
+                  : speaking
+                    ? 'Speak to interrupt JARVIS. Echo reduction runs on this device.'
+                    : 'Your request is being processed on this device.'}
+            </p>
+          </div>
+        </div>
+        <AudioInputDisplay
+          level={mode.inputLevel}
+          sequence={mode.inputSequence}
+          active={mode.micActive}
+        />
+        <div className="audio-signal-chain" aria-label="Conversation stages">
+          <div data-active={mode.micActive}>
+            <Mic size={15} />
+            <span>01 / HEAR</span>
+            <small>Local microphone</small>
+          </div>
+          <div data-active={!waiting && !listening && !speaking}>
+            <Cpu size={15} />
+            <span>02 / THINK</span>
+            <small>LM Studio</small>
+          </div>
+          <div data-active={speaking}>
+            <Volume2 size={15} />
+            <span>03 / SPEAK</span>
+            <small>Local voice</small>
+          </div>
+        </div>
+        <div className="audio-deck-footer">
+          <span>ON-DEVICE AUDIO ENGINE</span>
+          <span>NO CLOUD ROUTING</span>
+        </div>
       </div>
       <div className="voice-turn-preview">
         {mode.lastUser && (
@@ -107,23 +144,11 @@ export function VoiceConversation({ mode }: { mode: VoiceModeController }) {
           </div>
         )}
       </div>
-      <Button
-        autoFocus
-        aria-keyshortcuts="Escape"
-        className="voice-end-button"
-        variant="outline"
-        onClick={() => void mode.stop()}
-      >
-        <Square className="size-4" aria-hidden="true" />
-        Stop voice mode
-      </Button>
+
       <small>
-        Microphone active while listening · Spoken requests send automatically and stay in local
-        chat history.
+        Spoken requests send automatically and stay in local chat history. Press Esc to stop.
       </small>
-      <small>
-        Press Esc to stop. Listening ends when you switch chats, close, or minimize the app.
-      </small>
+      <small>Listening ends when you switch chats, close, or minimize the app.</small>
     </section>
   );
 }

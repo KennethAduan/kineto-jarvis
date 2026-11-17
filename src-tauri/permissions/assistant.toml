@@ -1,4 +1,4 @@
 [[permission]]
 identifier = "assistant"
 description = "Local chat, conversation history and cancellation only. No shell, filesystem or automation access."
-commands.allow = ["bootstrap", "discover_models", "create_conversation", "get_messages", "delete_conversation", "send_message", "cancel_generation", "get_activity", "search_conversations"]
+commands.allow = ["bootstrap", "discover_models", "create_conversation", "get_messages", "delete_conversation", "send_message", "cancel_generation", "get_activity", "search_conversations", "profile_get", "profile_save"]

@@ -1,3 +1,4 @@
+use crate::domain::profile::{Profile, ProfileRepository};
 use crate::domain::{
     models::{Activity, Conversation, Message},
     ports::ConversationRepository,
@@ -30,8 +31,44 @@ impl Store {
             UPDATE messages SET status='interrupted' WHERE status='streaming';
             UPDATE activity SET status='interrupted', detail='Application closed during generation'
               WHERE status='running';
-            PRAGMA user_version=1;") .map_err(|e| e.to_string())?;
+            CREATE TABLE IF NOT EXISTS personal_profile (
+              id INTEGER PRIMARY KEY CHECK(id=1), display_name TEXT NOT NULL,
+              content TEXT NOT NULL, enabled INTEGER NOT NULL CHECK(enabled IN (0,1)));
+            PRAGMA user_version=2;") .map_err(|e| e.to_string())?;
         Ok(Self(conn))
+    }
+}
+impl ProfileRepository for Store {
+    fn profile(&self) -> Result<Profile, String> {
+        use rusqlite::OptionalExtension;
+        self.0
+            .query_row(
+                "SELECT display_name,content,enabled FROM personal_profile WHERE id=1",
+                [],
+                |row| {
+                    Ok(Profile {
+                        display_name: row.get(0)?,
+                        content: row.get(1)?,
+                        enabled: row.get(2)?,
+                    })
+                },
+            )
+            .optional()
+            .map(|profile| profile.unwrap_or_default())
+            .map_err(|e| e.to_string())
+    }
+    fn save_profile(&self, profile: &Profile) -> Result<(), String> {
+        profile.validate()?;
+        if profile.display_name.is_empty() && profile.content.is_empty() {
+            self.0
+                .execute("DELETE FROM personal_profile WHERE id=1", [])
+                .map_err(|e| e.to_string())?;
+        } else {
+            self.0.execute("INSERT INTO personal_profile(id,display_name,content,enabled) VALUES (1,?1,?2,?3)
+                ON CONFLICT(id) DO UPDATE SET display_name=excluded.display_name,content=excluded.content,enabled=excluded.enabled",
+                params![profile.display_name, profile.content, profile.enabled]).map_err(|e| e.to_string())?;
+        }
+        Ok(())
     }
 }
 impl ConversationRepository for Store {
@@ -187,6 +224,36 @@ impl ConversationRepository for Store {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn profile_survives_restart_can_be_disabled_and_forgotten_without_deleting_chats() {
+        use super::*;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("profile-test.db");
+        let store = Store::open(&path).unwrap();
+        let chat = store.create().unwrap();
+        let profile = Profile {
+            display_name: "Avery O'Example".into(),
+            content: "Engineer with Unicode café experience.\n\nEducation: Example College.".into(),
+            enabled: true,
+        };
+        store.save_profile(&profile).unwrap();
+        drop(store);
+        let store = Store::open(&path).unwrap();
+        assert_eq!(store.profile().unwrap(), profile);
+        store
+            .save_profile(&Profile {
+                enabled: false,
+                ..profile.clone()
+            })
+            .unwrap();
+        assert!(
+            crate::application::profile::reference(&store.profile().unwrap(), "education")
+                .is_none()
+        );
+        store.save_profile(&Profile::default()).unwrap();
+        assert_eq!(store.profile().unwrap(), Profile::default());
+        assert_eq!(store.conversations().unwrap()[0].id, chat.id);
+    }
     use super::*;
     #[test]
     fn searches_titles_and_saved_answers_without_treating_input_as_sql_or_wildcards() {

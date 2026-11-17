@@ -1,4 +1,11 @@
-export type SpeechVoice = 'bm_george' | 'bm_fable' | 'bm_daniel' | 'bm_lewis' | 'system';
+export type SpeechVoice =
+  | 'supertonic_m1'
+  | 'supertonic_m2'
+  | 'bm_george'
+  | 'bm_fable'
+  | 'bm_daniel'
+  | 'bm_lewis'
+  | 'system';
 export interface SpeechPreferences {
   voice: SpeechVoice;
   speed: number;
@@ -10,15 +17,21 @@ export interface SpeechStatus {
   phase: 'idle' | 'downloading' | 'preparing' | 'playing';
   downloaded_bytes: number;
   error: string | null;
+  packs?: {
+    kokoro: { ready: boolean; bytes: number };
+    supertonic: { ready: boolean; bytes: number };
+  };
 }
 export interface SpeechGateway {
   status(): Promise<SpeechStatus>;
   save(preferences: SpeechPreferences): Promise<void>;
   preview(preferences: SpeechPreferences): Promise<void>;
-  download(): Promise<void>;
+  download(voice: SpeechVoice): Promise<void>;
   stop(): Promise<void>;
 }
 export const speechVoices: { id: SpeechVoice; label: string }[] = [
+  { id: 'supertonic_m2', label: 'Supertonic 3 · Male 2 (recommended)' },
+  { id: 'supertonic_m1', label: 'Supertonic 3 · Male 1' },
   { id: 'bm_george', label: 'George · British male' },
   { id: 'bm_fable', label: 'Fable · British male' },
   { id: 'bm_daniel', label: 'Daniel · British male' },

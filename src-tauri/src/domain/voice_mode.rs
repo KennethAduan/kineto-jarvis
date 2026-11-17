@@ -25,6 +25,7 @@ pub struct VoiceModeStatus {
 #[derive(Clone, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum VoiceModeEvent {
+    Interrupted,
     InputLevel { level: f32 },
     Phase { phase: VoiceModePhase },
     Transcript { text: String },
@@ -33,6 +34,9 @@ pub enum VoiceModeEvent {
 }
 pub trait VoiceModeSink: Send + Sync {
     fn emit(&self, event: VoiceModeEvent) -> Result<(), String>;
+}
+pub trait ReplyCancellation: Send + Sync {
+    fn cancel_reply(&self) -> Result<(), String>;
 }
 pub trait InputFrames: Send {
     fn next(&self, timeout: Duration) -> Result<Option<Vec<f32>>, String>;
@@ -50,6 +54,9 @@ pub trait WakeFactory: Send + Sync {
 pub trait TurnDetector: Send {
     fn feed(&self, samples: &[f32]) -> Option<Vec<f32>>;
     fn reset(&self);
+    fn detected(&self) -> bool {
+        false
+    }
 }
 pub trait TurnFactory: Send + Sync {
     fn create(&self) -> Result<Box<dyn TurnDetector>, String>;

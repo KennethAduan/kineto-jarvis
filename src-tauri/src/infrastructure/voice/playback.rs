@@ -12,7 +12,8 @@ use std::{
 };
 use tokio_util::sync::CancellationToken;
 
-pub struct SystemAudioPlayback;
+#[derive(Default)]
+pub struct SystemAudioPlayback(pub Arc<super::echo::RenderReference>);
 struct Cursor {
     samples: Vec<f32>,
     position: f64,
@@ -38,8 +39,10 @@ fn stream<T: SizedSample + FromSample<f32>>(
     cancel: CancellationToken,
     done: Arc<AtomicBool>,
     failed: Arc<AtomicBool>,
+    reference: Arc<super::echo::RenderReference>,
 ) -> Result<cpal::Stream, String> {
     let channels = usize::from(config.channels);
+    let mut render = super::echo::RenderFeed::new(reference, config.sample_rate);
     let mut cursor = Cursor {
         samples: audio.samples,
         position: 0.,
@@ -60,6 +63,7 @@ fn stream<T: SizedSample + FromSample<f32>>(
                         })
                     };
                     frame.fill(T::from_sample(value));
+                    render.push(value);
                 }
             },
             move |_| {
@@ -74,9 +78,9 @@ impl AudioPlayback for SystemAudioPlayback {
         if cancel.is_cancelled() {
             return Ok(());
         }
-        if audio.sample_rate != 24_000
+        if !(8_000..=48_000).contains(&audio.sample_rate)
             || audio.samples.is_empty()
-            || audio.samples.len() > 24_000 * 60
+            || audio.samples.len() > audio.sample_rate as usize * 60
             || audio.samples.iter().any(|s| !s.is_finite())
         {
             return Err("Invalid speech audio".into());
@@ -104,6 +108,7 @@ impl AudioPlayback for SystemAudioPlayback {
                 cancel.clone(),
                 done.clone(),
                 failed.clone(),
+                self.0.clone(),
             )?,
             SampleFormat::I16 => stream::<i16>(
                 &device,
@@ -112,6 +117,7 @@ impl AudioPlayback for SystemAudioPlayback {
                 cancel.clone(),
                 done.clone(),
                 failed.clone(),
+                self.0.clone(),
             )?,
             SampleFormat::U16 => stream::<u16>(
                 &device,
@@ -120,6 +126,7 @@ impl AudioPlayback for SystemAudioPlayback {
                 cancel.clone(),
                 done.clone(),
                 failed.clone(),
+                self.0.clone(),
             )?,
             SampleFormat::I32 => stream::<i32>(
                 &device,
@@ -128,6 +135,7 @@ impl AudioPlayback for SystemAudioPlayback {
                 cancel.clone(),
                 done.clone(),
                 failed.clone(),
+                self.0.clone(),
             )?,
             _ => return Err("Unsupported speaker sample format".into()),
         };
@@ -172,7 +180,7 @@ mod tests {
             .samples::<i16>()
             .map(|s| s.unwrap() as f32 / 65536.)
             .collect();
-        SystemAudioPlayback
+        SystemAudioPlayback::default()
             .play(
                 SpeechAudio {
                     samples,

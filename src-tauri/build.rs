@@ -12,6 +12,8 @@ fn main() {
             "cancel_generation",
             "get_activity",
             "search_conversations",
+            "profile_get",
+            "profile_save",
             "voice_status",
             "voice_download_model",
             "voice_start_recording",

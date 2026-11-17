@@ -40,7 +40,7 @@ pub(crate) fn voice_mode_start(
     let speech = state.speech.status()?;
     if speech.preferences.voice != crate::domain::speech::SpeechVoice::System && !speech.model.ready
     {
-        return Err("Download the Kokoro voice pack in Voice settings first.".into());
+        return Err("Download the selected voice pack in Voice settings first.".into());
     }
     state.voice_mode.start(Arc::new(Sink(on_event)))
 }

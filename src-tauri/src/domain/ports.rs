@@ -2,7 +2,7 @@ use super::models::{Activity, Conversation, Frame, Message, Model, ModelMessage,
 use futures_util::{future::BoxFuture, stream::BoxStream};
 
 /// Ports contain no Tauri, SQLite, reqwest, filesystem or platform dependencies.
-pub trait ConversationRepository: Send {
+pub trait ConversationRepository: super::profile::ProfileRepository + Send {
     fn conversations(&self) -> Result<Vec<Conversation>, String>;
     fn search(&self, query: &str) -> Result<Vec<Conversation>, String>;
     fn create(&self) -> Result<Conversation, String>;

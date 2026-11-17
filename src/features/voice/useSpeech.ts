@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { SpeechGateway, SpeechPreferences, SpeechStatus } from '@/domain/speech';
+import type { SpeechGateway, SpeechPreferences, SpeechStatus, SpeechVoice } from '@/domain/speech';
 import { errorText } from '@/lib/errors';
 
 export function useSpeech(api: SpeechGateway, desktop: boolean) {
@@ -78,7 +78,7 @@ export function useSpeech(api: SpeechGateway, desktop: boolean) {
     saved,
     save: (preferences: SpeechPreferences) => run('save', () => api.save(preferences)),
     preview: (preferences: SpeechPreferences) => run('preview', () => api.preview(preferences)),
-    download: () => run('download', api.download),
+    download: (voice: SpeechVoice) => run('download', () => api.download(voice)),
     stop,
   };
 }

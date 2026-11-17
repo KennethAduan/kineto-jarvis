@@ -27,6 +27,9 @@ pub(crate) fn speech_preview(
     state.speech.preview(preferences)
 }
 #[tauri::command]
-pub(crate) async fn speech_download_model(state: State<'_, DesktopState>) -> Result<(), String> {
-    state.speech.download().await
+pub(crate) async fn speech_download_model(
+    state: State<'_, DesktopState>,
+    voice: crate::domain::speech::SpeechVoice,
+) -> Result<(), String> {
+    state.speech.download(voice).await
 }

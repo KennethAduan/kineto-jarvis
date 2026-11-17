@@ -29,6 +29,7 @@ sha2 = "0.10"
 pulldown-cmark = { version = "0.13", default-features = false }
 tempfile = "3"
 misaki-rs = { version = "=0.9.0", default-features = false }
+sonora = "=0.3.0"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 sherpa-onnx = { version = "=2.0.1", default-features = false, features = ["shared"] }

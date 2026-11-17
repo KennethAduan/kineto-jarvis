@@ -8,6 +8,57 @@ use crate::{
 };
 use std::{sync::Mutex, time::Duration};
 struct TestSink<F>(F);
+#[tokio::test]
+#[ignore = "requires JARVIS_PROFILE_TEST_DB and a running local LM Studio; reads profile only and uses an in-memory test chat"]
+async fn local_model_uses_private_profile_and_jarvis_identity() {
+    use crate::domain::{
+        ports::ConversationRepository,
+        profile::{Profile, ProfileRepository},
+    };
+    let path = std::env::var_os("JARVIS_PROFILE_TEST_DB").expect("explicit local profile database");
+    let db = rusqlite::Connection::open_with_flags(
+        std::path::Path::new(&path),
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+    )
+    .unwrap();
+    let profile = db
+        .query_row(
+            "SELECT display_name,content,enabled FROM personal_profile WHERE id=1",
+            [],
+            |row| {
+                Ok(Profile {
+                    display_name: row.get(0)?,
+                    content: row.get(1)?,
+                    enabled: row.get(2)?,
+                })
+            },
+        )
+        .unwrap();
+    let expected = profile.display_name.to_lowercase();
+    let store = Store::open(std::path::Path::new(":memory:")).unwrap();
+    store.save_profile(&profile).unwrap();
+    let conversation = store.create().unwrap();
+    let service =
+        AssistantService::new(Box::new(store), Box::new(LmStudioGateway::local().unwrap()));
+    let reply = execute_send(
+        &service,
+        conversation.id,
+        "What is my full name, and what is your name? Answer in one short sentence.".into(),
+        "qwen/qwen3-4b-2507".into(),
+        &TestSink(|_| Ok(())),
+    )
+    .await
+    .unwrap();
+    assert!(reply.error.is_none());
+    assert!(
+        reply.message.content.to_lowercase().contains(&expected),
+        "model must use the stored full name"
+    );
+    assert!(
+        reply.message.content.to_lowercase().contains("jarvis"),
+        "assistant identity must remain Jarvis"
+    );
+}
 #[test]
 fn search_rejects_blank_or_oversized_input_before_querying_storage() {
     let service = state("http://127.0.0.1:1/v1");
@@ -94,6 +145,14 @@ const SUCCESS:&str="data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"thin
 async fn real_http_stream_saves_history_and_activity() {
     let (url, rx, server) = fixture(SUCCESS, false);
     let state = state(&url);
+    state
+        .save_profile(&crate::domain::profile::Profile {
+            display_name: "Avery Example".into(),
+            content: "Full-stack engineer in Example City.\n\nCONTACT\navery@example.invalid"
+                .into(),
+            enabled: true,
+        })
+        .unwrap();
     let conversation = locked(&state.store).unwrap().create().unwrap();
     let events = Arc::new(Mutex::new(Vec::new()));
     let saved = events.clone();
@@ -119,6 +178,14 @@ async fn real_http_stream_saves_history_and_activity() {
     assert_eq!(body["stream"], true);
     assert!(body.get("tools").is_none());
     assert_eq!(body["messages"][1]["content"], "Hello");
+    let system = body["messages"][0]["content"].as_str().unwrap();
+    assert!(system.contains("Your name is JARVIS"));
+    assert!(system.contains("Avery Example"));
+    assert!(system.contains("Full-stack engineer"));
+    assert!(
+        !system.contains("avery@example.invalid"),
+        "unrequested contact section is not retrieved"
+    );
     assert_eq!(
         locked(&state.store)
             .unwrap()

@@ -3,6 +3,10 @@ use tokio_util::sync::CancellationToken;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SpeechVoice {
+    #[serde(rename = "supertonic_m2")]
+    Supertonic2,
+    #[serde(rename = "supertonic_m1")]
+    Supertonic1,
     #[serde(rename = "bm_george")]
     George,
     #[serde(rename = "bm_fable")]
@@ -22,7 +26,11 @@ impl SpeechVoice {
             Self::Daniel => Some(24),
             Self::Lewis => Some(27),
             Self::System => None,
+            Self::Supertonic1 | Self::Supertonic2 => None,
         }
+    }
+    pub fn is_supertonic(self) -> bool {
+        matches!(self, Self::Supertonic1 | Self::Supertonic2)
     }
 }
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
@@ -39,7 +47,7 @@ fn default_volume() -> f32 {
 impl Default for SpeechPreferences {
     fn default() -> Self {
         Self {
-            voice: SpeechVoice::George,
+            voice: SpeechVoice::Supertonic2,
             speed: 1.15,
             volume: default_volume(),
         }

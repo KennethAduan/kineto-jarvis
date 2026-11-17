@@ -16,11 +16,13 @@ struct Task {
     enabled: bool,
     phase: VoiceModePhase,
     cancel: CancellationToken,
+    reply_cancel: CancellationToken,
     heartbeat: Instant,
     resume: bool,
     error: Option<String>,
 }
 struct Inner {
+    replies: Arc<dyn ReplyCancellation>,
     input: Box<dyn VoiceInput>,
     wake: Box<dyn WakeFactory>,
     turn: Box<dyn TurnFactory>,
@@ -48,8 +50,10 @@ impl VoiceModeService {
         turn: Box<dyn TurnFactory>,
         recognizer: Arc<dyn SpeechRecognizer>,
         model: Box<dyn SpeechModel>,
+        replies: Arc<dyn ReplyCancellation>,
     ) -> Self {
         Self(Arc::new(Inner {
+            replies,
             input,
             wake,
             turn,
@@ -60,6 +64,7 @@ impl VoiceModeService {
                 enabled: false,
                 phase: VoiceModePhase::Off,
                 cancel: CancellationToken::new(),
+                reply_cancel: CancellationToken::new(),
                 heartbeat: Instant::now(),
                 resume: false,
                 error: None,
@@ -116,6 +121,7 @@ impl VoiceModeService {
         task.enabled = true;
         task.phase = VoiceModePhase::Starting;
         task.cancel = CancellationToken::new();
+        task.reply_cancel = task.cancel.child_token();
         task.heartbeat = Instant::now();
         task.resume = false;
         task.error = None;
@@ -178,6 +184,7 @@ impl VoiceModeService {
             .lock()
             .map_err(|_| "Voice mode state unavailable")?;
         task.cancel.cancel();
+        task.reply_cancel.cancel();
         if task.enabled {
             task.phase = VoiceModePhase::Stopping;
         }
@@ -191,7 +198,7 @@ impl VoiceModeService {
             .map_err(|_| "Voice mode state unavailable")?;
         Ok(
             (task.enabled && task.phase == VoiceModePhase::Paused && !task.cancel.is_cancelled())
-                .then(|| task.cancel.clone()),
+                .then(|| task.reply_cancel.clone()),
         )
     }
 }
@@ -242,15 +249,14 @@ fn run(inner: &Inner, sink: &dyn VoiceModeSink, cancel: CancellationToken) -> Re
                     .map_err(|_| "Voice mode state unavailable")?;
                 std::mem::take(&mut task.resume)
             };
-            if !resume {
-                std::thread::sleep(Duration::from_millis(50));
-                continue;
+            if resume {
+                if microphone.is_none() {
+                    microphone = Some(inner.input.open()?);
+                }
+                listening = true;
+                started = Instant::now();
+                phase(inner, sink, VoiceModePhase::Listening)?;
             }
-            microphone = Some(inner.input.open()?);
-            turn.reset();
-            listening = true;
-            started = Instant::now();
-            phase(inner, sink, VoiceModePhase::Listening)?;
         }
         let frame = microphone
             .as_ref()
@@ -264,6 +270,24 @@ fn run(inner: &Inner, sink: &dyn VoiceModeSink, cancel: CancellationToken) -> Re
                 level: input_level(&frame),
             })?;
             meter_updated = Instant::now();
+        }
+        if paused && !listening {
+            // Echo-cleaned input stays open during replies, solely for user interruption.
+            let _ = turn.feed(&frame);
+            if turn.detected() {
+                inner
+                    .task
+                    .lock()
+                    .map_err(|_| "Voice state unavailable")?
+                    .reply_cancel
+                    .cancel();
+                sink.emit(VoiceModeEvent::Interrupted)?;
+                inner.replies.cancel_reply()?;
+                listening = true;
+                started = Instant::now();
+                phase(inner, sink, VoiceModePhase::Listening)?;
+            }
+            continue;
         }
         if !listening {
             if wake.feed(&frame) {
@@ -298,6 +322,13 @@ fn run(inner: &Inner, sink: &dyn VoiceModeSink, cancel: CancellationToken) -> Re
                 break;
             }
             phase(inner, sink, VoiceModePhase::Paused)?;
+            {
+                let mut task = inner.task.lock().map_err(|_| "Voice state unavailable")?;
+                task.reply_cancel = task.cancel.child_token();
+            }
+            microphone = Some(inner.input.open()?);
+            turn.reset();
+            listening = false;
             sink.emit(VoiceModeEvent::Transcript { text: transcript })?;
         } else if started.elapsed() > Duration::from_secs(30) {
             listening = false;
@@ -349,6 +380,12 @@ mod tests {
     use crate::domain::voice::SpeechModelInfo;
     use futures_util::future::BoxFuture;
     use std::sync::atomic::{AtomicBool, AtomicUsize};
+    struct Replies;
+    impl ReplyCancellation for Replies {
+        fn cancel_reply(&self) -> Result<(), String> {
+            Ok(())
+        }
+    }
     struct Frames(Arc<AtomicUsize>);
     impl Drop for Frames {
         fn drop(&mut self) {
@@ -383,10 +420,13 @@ mod tests {
             Ok(Box::new(Wake(AtomicBool::new(false))))
         }
     }
-    struct Turn(AtomicUsize);
+    struct Turn(AtomicUsize, Arc<AtomicBool>);
     impl TurnDetector for Turn {
+        fn detected(&self) -> bool {
+            self.1.swap(false, Ordering::Relaxed)
+        }
         fn feed(&self, _: &[f32]) -> Option<Vec<f32>> {
-            if self.0.fetch_add(1, Ordering::Relaxed) == 1 {
+            if self.0.fetch_add(1, Ordering::Relaxed) % 2 == 1 {
                 Some(vec![0.1; 16_000])
             } else {
                 None
@@ -396,10 +436,10 @@ mod tests {
             self.0.store(0, Ordering::Relaxed);
         }
     }
-    struct TurnMaker;
+    struct TurnMaker(Arc<AtomicBool>);
     impl TurnFactory for TurnMaker {
         fn create(&self) -> Result<Box<dyn TurnDetector>, String> {
-            Ok(Box::new(Turn(AtomicUsize::new(0))))
+            Ok(Box::new(Turn(AtomicUsize::new(0), self.0.clone())))
         }
     }
     struct Recognizer(Arc<AtomicUsize>);
@@ -438,13 +478,19 @@ mod tests {
         }
     }
     fn fixture() -> (VoiceModeService, Arc<AtomicUsize>, Arc<Sink>) {
+        fixture_with_interruption(Arc::new(AtomicBool::new(false)))
+    }
+    fn fixture_with_interruption(
+        interrupt: Arc<AtomicBool>,
+    ) -> (VoiceModeService, Arc<AtomicUsize>, Arc<Sink>) {
         let open = Arc::new(AtomicUsize::new(0));
         let mode = VoiceModeService::new(
             Box::new(Input(open.clone())),
             Box::new(WakeMaker),
-            Box::new(TurnMaker),
+            Box::new(TurnMaker(interrupt)),
             Arc::new(Recognizer(open.clone())),
             Box::new(Model),
+            Arc::new(Replies),
         );
         (mode, open, Arc::new(Sink::default()))
     }
@@ -454,6 +500,43 @@ mod tests {
             assert!(Instant::now() < deadline, "voice mode did not settle");
             std::thread::sleep(Duration::from_millis(1));
         }
+    }
+    #[test]
+    fn detected_user_speech_cancels_only_the_reply_and_keeps_the_session_for_the_next_turn() {
+        let interrupt = Arc::new(AtomicBool::new(false));
+        let (mode, open, sink) = fixture_with_interruption(interrupt.clone());
+        mode.start(sink.clone()).unwrap();
+        until(|| {
+            sink.0
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|e| matches!(e, VoiceModeEvent::Transcript { .. }))
+        });
+        let old_reply = mode.reply_token().unwrap().unwrap();
+        interrupt.store(true, Ordering::Relaxed);
+        until(|| {
+            sink.0
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|e| matches!(e, VoiceModeEvent::Interrupted))
+        });
+        assert!(old_reply.is_cancelled());
+        assert!(mode.status().unwrap().enabled);
+        until(|| {
+            sink.0
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|e| matches!(e, VoiceModeEvent::Transcript { .. }))
+                .count()
+                == 2
+        });
+        assert!(!mode.reply_token().unwrap().unwrap().is_cancelled());
+        mode.stop().unwrap();
+        until(|| !mode.status().unwrap().enabled);
+        assert_eq!(open.load(Ordering::Relaxed), 0);
     }
     #[test]
     fn hands_free_turn_closes_mic_then_requires_explicit_resume_after_reply() {
@@ -466,7 +549,7 @@ mod tests {
                 .iter()
                 .any(|event| matches!(event, VoiceModeEvent::Transcript { .. }))
         });
-        assert_eq!(open.load(Ordering::Relaxed), 0);
+        assert_eq!(open.load(Ordering::Relaxed), 1);
         assert!(mode.status().unwrap().phase == VoiceModePhase::Paused);
         assert!(mode.resume("stale-session").is_err());
         assert!(mode.start(sink.clone()).is_err());

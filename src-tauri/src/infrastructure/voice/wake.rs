@@ -61,7 +61,7 @@ impl TurnFactory for NativeTurnFactory {
                         .into_owned(),
                 ),
                 threshold: 0.5,
-                min_silence_duration: 0.9,
+                min_silence_duration: 0.45,
                 min_speech_duration: 0.25,
                 window_size: 512,
                 max_speech_duration: 25.,
@@ -78,6 +78,9 @@ impl TurnFactory for NativeTurnFactory {
     }
 }
 impl TurnDetector for Turn {
+    fn detected(&self) -> bool {
+        self.0.detected()
+    }
     fn feed(&self, samples: &[f32]) -> Option<Vec<f32>> {
         self.0.accept_waveform(samples);
         if self.0.is_empty() {
@@ -122,7 +125,10 @@ mod tests {
         let audio = synth
             .synthesize(
                 "Hey Jarvis.",
-                SpeechPreferences::default(),
+                SpeechPreferences {
+                    voice: crate::domain::speech::SpeechVoice::George,
+                    ..Default::default()
+                },
                 CancellationToken::new(),
             )
             .unwrap();
@@ -142,7 +148,10 @@ mod tests {
         let audio = synth
             .synthesize(
                 "What is two plus two?",
-                SpeechPreferences::default(),
+                SpeechPreferences {
+                    voice: crate::domain::speech::SpeechVoice::George,
+                    ..Default::default()
+                },
                 CancellationToken::new(),
             )
             .unwrap();
