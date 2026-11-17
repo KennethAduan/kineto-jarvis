@@ -140,7 +140,7 @@ mod tests {
         for (name, voice, speed) in [
             ("george", SpeechVoice::George, 0.95),
             ("fable", SpeechVoice::Fable, 0.95),
-            ("george-fast", SpeechVoice::George, 1.25),
+            ("george-fast", SpeechVoice::George, 1.5),
         ] {
             let audio = engine
                 .synthesize(

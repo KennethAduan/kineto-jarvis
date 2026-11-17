@@ -40,7 +40,7 @@ impl Default for SpeechPreferences {
     fn default() -> Self {
         Self {
             voice: SpeechVoice::George,
-            speed: 0.95,
+            speed: 1.15,
             volume: default_volume(),
         }
     }
@@ -50,8 +50,8 @@ impl SpeechPreferences {
         if !self.volume.is_finite() || !(0.0..=1.5).contains(&self.volume) {
             return Err("Choose an output volume between 0 and 150%.".into());
         }
-        if !self.speed.is_finite() || !(0.75..=1.25).contains(&self.speed) {
-            return Err("Choose a speaking speed between 0.75 and 1.25.".into());
+        if !self.speed.is_finite() || !(0.75..=1.5).contains(&self.speed) {
+            return Err("Choose a speaking speed between 0.75 and 1.50.".into());
         }
         Ok(())
     }
@@ -101,6 +101,26 @@ pub fn spoken_text(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn conversational_speed_defaults_faster_and_accepts_the_supported_range() {
+        assert_eq!(SpeechPreferences::default().speed, 1.15);
+        for speed in [0.75, 1.15, 1.5] {
+            assert!(SpeechPreferences {
+                speed,
+                ..Default::default()
+            }
+            .validate()
+            .is_ok());
+        }
+        for speed in [0.74, 1.51, f32::NAN, f32::INFINITY] {
+            assert!(SpeechPreferences {
+                speed,
+                ..Default::default()
+            }
+            .validate()
+            .is_err());
+        }
+    }
     #[test]
     fn existing_preferences_gain_default_volume_and_invalid_gain_is_rejected() {
         let prefs: SpeechPreferences =

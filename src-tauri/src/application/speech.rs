@@ -173,18 +173,7 @@ impl SpeechService {
             .spawn(move || {
                 let _job = Job(inner.clone());
                 let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    let deadline = Instant::now() + Duration::from_secs(600);
-                    while !token.is_cancelled() {
-                        if Instant::now() >= deadline {
-                            return Err("Live speech reached its time limit".to_owned());
-                        }
-                        match receiver.recv_timeout(Duration::from_millis(100)) {
-                            Ok(text) => run(&inner, &text, preferences, token.clone())?,
-                            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
-                            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
-                        }
-                    }
-                    Ok(())
+                    run_stream(&inner, receiver, preferences, token.clone())
                 }))
                 .unwrap_or_else(|_| Err("Speech worker stopped unexpectedly".into()));
                 if let Err(error) = result {
@@ -319,6 +308,91 @@ fn run(
     }
     Ok(())
 }
+
+fn run_stream(
+    inner: &Inner,
+    receiver: std::sync::mpsc::Receiver<String>,
+    preferences: SpeechPreferences,
+    cancel: CancellationToken,
+) -> Result<(), String> {
+    let deadline = Instant::now() + Duration::from_secs(600);
+    if preferences.voice == SpeechVoice::System {
+        while !cancel.is_cancelled() {
+            if Instant::now() >= deadline {
+                return Err("Live speech reached its time limit".into());
+            }
+            match receiver.recv_timeout(Duration::from_millis(100)) {
+                Ok(text) => run(inner, &text, preferences, cancel.clone())?,
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
+                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+            }
+        }
+        return Ok(());
+    }
+    // Prepare upcoming speech while the previous buffer plays. Keep only one ready buffer.
+    let producer_cancel = cancel.child_token();
+    std::thread::scope(|scope| {
+        let (sender, audio) = std::sync::mpsc::sync_channel::<SpeechAudio>(1);
+        let token = producer_cancel.clone();
+        let producer = scope.spawn(move || -> Result<(), String> {
+            while !token.is_cancelled() {
+                if Instant::now() >= deadline {
+                    return Err("Live speech reached its time limit".into());
+                }
+                match receiver.recv_timeout(Duration::from_millis(100)) {
+                    Ok(text) => {
+                        for chunk in speech_chunks(&text) {
+                            if token.is_cancelled() {
+                                return Ok(());
+                            }
+                            let buffer =
+                                inner
+                                    .synthesizer
+                                    .synthesize(&chunk, preferences, token.clone())?;
+                            if token.is_cancelled() {
+                                return Ok(());
+                            }
+                            if sender.send(buffer).is_err() {
+                                return Ok(());
+                            }
+                        }
+                    }
+                    Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
+                    Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+                }
+            }
+            Ok(())
+        });
+        let playback = (|| {
+            while !cancel.is_cancelled() {
+                if Instant::now() >= deadline {
+                    return Err("Live speech reached its time limit".into());
+                }
+                match audio.recv_timeout(Duration::from_millis(100)) {
+                    Ok(buffer) => {
+                        if cancel.is_cancelled() {
+                            break;
+                        }
+                        if let Ok(mut task) = inner.task.lock() {
+                            task.phase = SpeechPhase::Playing;
+                        }
+                        inner.player.play(buffer, cancel.clone())?;
+                    }
+                    Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
+                    Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+                }
+            }
+            Ok(())
+        })();
+        // Drop the receiver before joining so cancellation also unblocks a full audio queue.
+        drop(audio);
+        producer_cancel.cancel();
+        let generated = producer
+            .join()
+            .unwrap_or_else(|_| Err("Speech preparation stopped unexpectedly".into()));
+        playback.and(generated)
+    })
+}
 pub fn speech_chunks(text: &str) -> Vec<String> {
     let mut result = Vec::new();
     let mut remaining = text.trim();
@@ -425,6 +499,14 @@ mod tests {
         wait: bool,
         fail: bool,
     ) -> (SpeechService, Seen, Arc<Mutex<SpeechPreferences>>) {
+        fixture_with_player(ready, wait, fail, Box::new(Player))
+    }
+    fn fixture_with_player(
+        ready: bool,
+        wait: bool,
+        fail: bool,
+        player: Box<dyn AudioPlayback>,
+    ) -> (SpeechService, Seen, Arc<Mutex<SpeechPreferences>>) {
         let seen = Seen::default();
         let preferences = Arc::new(Mutex::new(SpeechPreferences::default()));
         (
@@ -434,7 +516,7 @@ mod tests {
                     wait,
                     fail,
                 }),
-                Box::new(Player),
+                player,
                 Box::new(Store(preferences.clone())),
                 Box::new(Model(ready)),
                 Box::new(System),
@@ -443,6 +525,40 @@ mod tests {
             seen,
             preferences,
         )
+    }
+    #[test]
+    fn prepares_next_sentence_during_playback_and_cancels_a_full_audio_queue() {
+        use std::sync::atomic::AtomicBool;
+        struct HeldPlayer(Arc<AtomicBool>);
+        impl AudioPlayback for HeldPlayer {
+            fn play(&self, _: SpeechAudio, cancel: CancellationToken) -> Result<(), String> {
+                self.0.store(true, Ordering::Relaxed);
+                while !cancel.is_cancelled() {
+                    std::thread::sleep(Duration::from_millis(1));
+                }
+                Ok(())
+            }
+        }
+        let playing = Arc::new(AtomicBool::new(false));
+        let (speech, seen, _) =
+            fixture_with_player(true, false, false, Box::new(HeldPlayer(playing.clone())));
+        let parent = CancellationToken::new();
+        let stream = speech.stream(&parent).unwrap();
+        for sentence in [
+            "First sentence.",
+            "Second sentence.",
+            "Third sentence.",
+            "Fourth sentence.",
+        ] {
+            stream.push(sentence.into()).unwrap();
+        }
+        until(|| playing.load(Ordering::Relaxed));
+        until(|| seen.0.lock().unwrap().len() == 3);
+        // First is playing, second is ready, third is blocked at the bounded handoff.
+        assert!(speech.is_speaking());
+        parent.cancel();
+        until(|| !speech.is_speaking());
+        assert_eq!(seen.0.lock().unwrap().len(), 3);
     }
     fn until(mut condition: impl FnMut() -> bool) {
         let deadline = Instant::now() + Duration::from_secs(2);
@@ -557,7 +673,7 @@ mod tests {
                 volume: 1.,
             })
             .is_err());
-        assert_eq!(store.lock().unwrap().speed, 0.95);
+        assert_eq!(store.lock().unwrap().speed, 1.15);
         let (speech, _, _) = fixture(true, false, true);
         speech.speak("A reply").unwrap();
         until(|| speech.status().unwrap().phase == SpeechPhase::Idle);

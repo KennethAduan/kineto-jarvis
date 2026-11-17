@@ -30,7 +30,7 @@ export function SpeechSettings({
   const speech = useSpeech(api, desktop);
   const [preferences, setPreferences] = useState<SpeechPreferences>({
     voice: 'bm_george',
-    speed: 0.95,
+    speed: 1.15,
     volume: 1,
   });
   const voice = speech.status?.preferences.voice;
@@ -86,14 +86,14 @@ export function SpeechSettings({
           value={[preferences.speed]}
           onValueChange={([speed]) => setPreferences({ ...preferences, speed })}
           min={0.75}
-          max={1.25}
+          max={1.5}
           step={0.05}
           disabled={disabled || system}
         />
         <small>
           {system
             ? 'The system voice uses its default speed.'
-            : 'Slower and measured, or brisk and concise.'}
+            : 'Try 1.15× for a natural conversation, or increase up to 1.50×.'}
         </small>
       </div>
       <div className="speech-field">
